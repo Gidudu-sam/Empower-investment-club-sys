@@ -126,7 +126,7 @@ echo "=== SECTION 2: Members -- view only ===\n";
 ok($reached(renderAs('chairman', 'MemberController', 'index')), 'Chairman CAN view the member list');
 ok(!$reached(renderAs('chairman', 'MemberController', 'add')), 'Chairman BLOCKED from adding a member');
 ok(!$reached(renderAs('chairman', 'MemberController', 'edit', ['id' => $anyMemberId])), 'Chairman BLOCKED from editing a member');
-ok(!$reached(renderAs('chairman', 'MemberController', 'toggleStatus', ['id' => $anyMemberId])), 'Chairman BLOCKED from toggling a member\'s status');
+ok(!$reached(renderAs('chairman', 'MemberController', 'changeStatus', ['id' => $anyMemberId])), 'Chairman BLOCKED from changing a member\'s status');
 echo "\n";
 
 echo "=== SECTION 3: Loans -- view + approve/reject/disburse yes, originate/edit/delete no ===\n";

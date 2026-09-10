@@ -160,7 +160,7 @@ echo "=== SECTION 2: Members -- view/add/edit yes, delete/toggle no ===\n";
 ok($reached(renderAs('office_admin', 'MemberController', 'index')), 'office_admin CAN view the member list');
 ok($reached(renderAs('office_admin', 'MemberController', 'add')), 'office_admin CAN reach the add-member form');
 ok($reached(renderAs('office_admin', 'MemberController', 'edit', ['id' => $anyMemberId])), 'office_admin CAN reach the edit-member form');
-ok(!$reached(renderAs('office_admin', 'MemberController', 'toggleStatus', ['id' => $anyMemberId])), 'office_admin BLOCKED from toggling a member\'s status');
+ok(!$reached(renderAs('office_admin', 'MemberController', 'changeStatus', ['id' => $anyMemberId])), 'office_admin BLOCKED from changing a member\'s status');
 echo "\n";
 
 echo "=== SECTION 3: Savings -- open account yes, deposit yes, withdrawal no ===\n";

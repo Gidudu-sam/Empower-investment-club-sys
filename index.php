@@ -45,7 +45,7 @@ $routes = [
     'member-edit'    => ['MemberController',    'edit'],
     'member-view'    => ['MemberController',    'view'],
     'member-delete'  => ['MemberController',    'delete'],
-    'member-toggle'  => ['MemberController',    'toggleStatus'],
+    'member-status-change' => ['MemberController', 'changeStatus'],
     // Member Import
     'member-import'          => ['MemberImportController', 'index'],
     'member-import-preview'  => ['MemberImportController', 'preview'],

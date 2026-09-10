@@ -157,7 +157,7 @@ ok($reached(renderAs('loans_officer', 'MemberController', 'index')), 'loans_offi
 ok($reached(renderAs('loans_officer', 'MemberController', 'view', ['id' => $anyMemberId])), 'loans_officer CAN view a member profile');
 ok(!$reached(renderAs('loans_officer', 'MemberController', 'add')), 'loans_officer BLOCKED from adding a member');
 ok(!$reached(renderAs('loans_officer', 'MemberController', 'edit', ['id' => $anyMemberId])), 'loans_officer BLOCKED from editing a member');
-ok(!$reached(renderAs('loans_officer', 'MemberController', 'toggleStatus', ['id' => $anyMemberId])), 'loans_officer BLOCKED from toggling a member\'s status');
+ok(!$reached(renderAs('loans_officer', 'MemberController', 'changeStatus', ['id' => $anyMemberId])), 'loans_officer BLOCKED from changing a member\'s status');
 echo "\n";
 
 echo "=== SECTION 3: Loan Applications -- create/edit/submit yes, approve/reject/delete no ===\n";
