@@ -96,6 +96,37 @@ $treasurerGLAccountId  = (int)($_GET['account_id'] ?? 0);
 </div>
 <?php endif; ?>
 
+<?php if ($canSeeShares): ?>
+<a class="nav-link <?= $sharesOpen ? '' : 'collapsed' ?>"
+   href="#sharesMenu" data-bs-toggle="collapse"
+   aria-expanded="<?= $sharesOpen ? 'true' : 'false' ?>"
+   aria-controls="sharesMenu">
+    <div class="sb-nav-link-icon"><i class="bi bi-pie-chart-fill"></i></div>
+    Shares
+    <div class="sb-sidenav-collapse-arrow ms-auto"><i class="bi bi-chevron-down"></i></div>
+</a>
+<div class="collapse <?= $sharesOpen ? 'show' : '' ?>" id="sharesMenu" data-bs-parent="#sidenavAccordion">
+    <nav class="sb-sidenav-menu-nested nav">
+        <a class="nav-link <?= isActive('shares') ?>" href="<?= APP_URL ?>/index.php?page=shares">
+            <i class="bi bi-list-ul me-2"></i> Overview
+        </a>
+        <?php if ($canRecordShareTransaction): ?>
+        <a class="nav-link <?= isActive('share-transaction-create') ?>" href="<?= APP_URL ?>/index.php?page=share-transaction-create">
+            <i class="bi bi-plus-circle me-2"></i> Record Share Transaction
+        </a>
+        <?php endif; ?>
+        <?php if ($canRecordHistoricalShares): ?>
+        <a class="nav-link <?= isActive('share-historical-create') ?>" href="<?= APP_URL ?>/index.php?page=share-historical-create">
+            <i class="bi bi-clock-history me-2"></i> Record Historical Shares
+        </a>
+        <?php endif; ?>
+        <a class="nav-link <?= isActive('report-shares') ?>" href="<?= APP_URL ?>/index.php?page=report-shares">
+            <i class="bi bi-file-bar-graph me-2"></i> Reports
+        </a>
+    </nav>
+</div>
+<?php endif; ?>
+
 <?php if ($canSeeLoansSection): ?>
 <a class="nav-link <?= $loansOpen ? '' : 'collapsed' ?>"
    href="#loansMenu" data-bs-toggle="collapse"

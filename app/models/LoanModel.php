@@ -891,6 +891,47 @@ class LoanModel extends Model
         catch (PDOException $e) { return 0; }
     }
 
+    /** Row-level detail behind dueThisWeekCount() -- same WHERE clause, kept
+     *  identical so the dashboard "Loans Due This Week" modal always lists
+     *  exactly the loans the card's own count reflects. */
+    public function dueThisWeekList(): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT l.id, l.loan_number, l.outstanding, l.due_date,
+                        m.id AS member_id, m.first_name, m.last_name, m.member_number, m.phone,
+                        DATEDIFF(l.due_date, CURDATE()) AS days_remaining
+                 FROM `loans` l JOIN `members` m ON m.id = l.member_id
+                 WHERE l.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND l.status='active'
+                 ORDER BY l.due_date ASC"
+            );
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) { return []; }
+    }
+
+    /** Row-level detail behind countOverdue() -- same WHERE clause, kept
+     *  identical so the dashboard "Overdue Loans" modal always lists
+     *  exactly the loans the card's own count reflects (unlike the older
+     *  getOverdueLoans(), which only checks status='active' and therefore
+     *  misses loans syncOverdueStatus() has already flipped to
+     *  status='overdue'). */
+    public function overdueList(): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT l.id, l.loan_number, l.outstanding, l.due_date,
+                        m.id AS member_id, m.first_name, m.last_name, m.member_number, m.phone,
+                        DATEDIFF(CURDATE(), l.due_date) AS days_overdue
+                 FROM `loans` l JOIN `members` m ON m.id = l.member_id
+                 WHERE l.status='overdue' OR (l.status='active' AND l.due_date < CURDATE())
+                 ORDER BY l.due_date ASC"
+            );
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) { return []; }
+    }
+
     /**
      * Member who has borrowed the most, all-time (sum of loan_amount across all their loans).
      */

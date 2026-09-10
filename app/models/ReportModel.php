@@ -418,33 +418,49 @@ class ReportModel extends Model
     // SHARE REPORTS
     // ================================================================
 
+    /**
+     * Stage 4-A: previously read only `withdrawals.retained_amount`, blind
+     * to `share_transactions` entirely -- meaning it silently omitted every
+     * Stage 3 historical entry (and would have omitted a future Stage 4
+     * current transaction too). Fixed by delegating the aggregate
+     * calculations to ShareModel's already-proven, already-tested
+     * withdrawals+share_transactions merge (ShareModel::totalShareCapital()/
+     * shareholderCount()/topShareholders()) rather than re-deriving the
+     * same merge/exclusion SQL a second time here. ShareModel's own
+     * unmirroredWithdrawalWhere() is what prevents a Stage 2 retained-
+     * withdrawal mirror from being counted once from `withdrawals` and
+     * again from `share_transactions` -- unchanged, reused exactly as-is.
+     * Return shape (keys, 'total_shares' field name, row order) is
+     * unchanged from before this fix, so reports/shares.php needs no edit.
+     */
     public function getShareReport(): array
     {
         try {
-            $report = [];
-            $report['total_share_capital'] = (float)$this->db->query(
-                "SELECT COALESCE(SUM(retained_amount),0) FROM withdrawals"
-            )->fetchColumn();
+            $shareModel = new ShareModel();
+            $shareValue = (float)(new SettingsModel())->get('share_value', '20000');
 
-            $report['total_shareholders'] = (int)$this->db->query(
-                "SELECT COUNT(DISTINCT member_id) FROM withdrawals WHERE retained_amount > 0"
-            )->fetchColumn();
+            $report = [];
+            $report['total_share_capital'] = $shareModel->totalShareCapital();
+            $report['total_shareholders'] = $shareModel->shareholderCount();
 
             $report['avg_shares'] = $report['total_shareholders'] > 0
                 ? round($report['total_share_capital'] / $report['total_shareholders'], 2)
                 : 0;
 
-            // Top shareholders
-            $report['top_shareholders'] = $this->db->query(
-                "SELECT m.first_name, m.last_name, m.member_number,
-                        SUM(w.retained_amount) AS total_shares
-                 FROM withdrawals w
-                 JOIN members m ON m.id = w.member_id
-                 WHERE w.retained_amount > 0
-                 GROUP BY w.member_id, m.first_name, m.last_name, m.member_number
-                 ORDER BY total_shares DESC
-                 LIMIT 20"
-            )->fetchAll();
+            // Top shareholders -- ShareModel::topShareholders() already
+            // returns id/first_name/last_name/member_number/total_capital/
+            // total_quantity, merged across both sources; remapped to
+            // 'total_shares' here only to preserve the exact field name the
+            // existing, unmodified reports/shares.php view already expects.
+            $report['top_shareholders'] = array_map(
+                fn(array $row) => [
+                    'first_name'    => $row['first_name'],
+                    'last_name'     => $row['last_name'],
+                    'member_number' => $row['member_number'],
+                    'total_shares'  => (float)$row['total_capital'],
+                ],
+                $shareModel->topShareholders($shareValue, 20)
+            );
 
             return $report;
         } catch (PDOException $e) {

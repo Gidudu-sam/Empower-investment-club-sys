@@ -346,18 +346,62 @@ class StatementModel extends Model
     }
 
     /**
+     * Stage 4-A: shared exclusion fragment so a Stage 2 retained-withdrawal
+     * mirror is counted from EITHER `withdrawals` OR `share_transactions`,
+     * never both -- the identical technique ShareModel::
+     * unmirroredWithdrawalWhere() already uses, re-expressed here (a
+     * different class, so the fragment itself can't be called directly)
+     * but referencing ShareModel::SOURCE_WITHDRAWAL rather than a second
+     * hardcoded 'withdrawal' string literal, per the shared-constant
+     * discipline established in Stage 2.
+     */
+    private function unmirroredWithdrawalWhere(): string
+    {
+        $source = ShareModel::SOURCE_WITHDRAWAL;
+        return "w.retained_amount > 0 AND w.id NOT IN (
+            SELECT source_reference_id FROM share_transactions
+            WHERE source_reference_type = '$source' AND source_reference_id IS NOT NULL
+        )";
+    }
+
+    /**
      * Total retained shares across ALL years up to and including this FY.
      * This is the permanent Share Capital.
+     *
+     * Stage 4-A fix: previously read only `withdrawals.retained_amount`,
+     * silently omitting every Stage 3 historical entry (opening_retained/
+     * opening_purchase) and any future current-transaction row. Now merges
+     * unmirrored withdrawals with `share_transactions`, exactly mirroring
+     * ShareModel::memberCapital()'s already-proven logic -- a Stage 2
+     * mirror is counted from `share_transactions` only, never doubled.
+     *
+     * `share_transactions.transaction_date` has no `financial_year` column
+     * of its own, so YEAR(transaction_date) is used as the FY-cutoff
+     * equivalent -- this deliberately matches (does not "correct")
+     * `withdrawals.financial_year`'s OWN existing assignment, which is
+     * also the plain calendar year of the withdrawal date, not a May-April
+     * financial-year adjustment (see WithdrawalModel::processAnnualCompulsory(),
+     * `$financialYear = (int)date('Y', strtotime($withdrawalDate))`) --
+     * using both sides consistently, even though that existing convention
+     * itself technically diverges from StatementModel::dateToFY()'s
+     * May-April logic used elsewhere in this file. That divergence
+     * pre-dates this stage and is out of scope here; documented, not
+     * fixed, per this stage's explicit instruction.
      */
     public function totalRetainedShares(int $memberId, int $upToYear): float
     {
         try {
+            $where = $this->unmirroredWithdrawalWhere();
             $stmt = $this->db->prepare(
-                "SELECT COALESCE(SUM(retained_amount),0)
-                 FROM `withdrawals`
-                 WHERE member_id = ? AND financial_year <= ?"
+                "SELECT
+                    (SELECT COALESCE(SUM(w.retained_amount),0) FROM `withdrawals` w
+                     WHERE w.member_id = ? AND w.financial_year <= ? AND $where)
+                    +
+                    (SELECT COALESCE(SUM(st.amount),0) FROM `share_transactions` st
+                     WHERE st.member_id = ? AND YEAR(st.transaction_date) <= ?)
+                 AS total"
             );
-            $stmt->execute([$memberId, $upToYear]);
+            $stmt->execute([$memberId, $upToYear, $memberId, $upToYear]);
             return (float)$stmt->fetchColumn();
         } catch (PDOException $e) { return 0; }
     }
@@ -386,26 +430,63 @@ class StatementModel extends Model
      * path exists), so `debit` is always 0 -- kept as a real column rather
      * than omitted so the ledger's shape matches the physical card exactly.
      */
+    /** Stage 4-A: human description for one share_transactions-sourced
+     *  ledger row, keyed by transaction_type -- keeps the same "Shares
+     *  Retained (WDL-######)" wording for an already-mirrored Stage 2
+     *  event (transaction_type='retained_withdrawal' rows that now live in
+     *  share_transactions instead of the unmirrored withdrawals side), and
+     *  adds matching wording for the two Stage 3 historical types. */
+    private function shareLedgerDescription(string $type, ?string $ref): string
+    {
+        $ref = $ref ?: '—';
+        return match ($type) {
+            'retained_withdrawal' => "Shares Retained ({$ref})",
+            'opening_retained'    => "Opening — Retained Savings ({$ref})",
+            'opening_purchase'    => "Opening — Bought Shares ({$ref})",
+            default               => ucwords(str_replace('_', ' ', $type)) . " ({$ref})",
+        };
+    }
+
+    /**
+     * Stage 4-A fix: previously read only `withdrawals`, silently omitting
+     * Stage 3 historical entries (and any future current-transaction row)
+     * from the printed/emailed Member Statement's share ledger table. Now
+     * merges unmirrored withdrawals with `share_transactions` rows,
+     * chronologically, with the same running-balance shape as before --
+     * "debit always 0" is left unchanged (still true of every transaction
+     * type that can actually exist today: retained_withdrawal,
+     * opening_retained, opening_purchase are all additive-only; a future
+     * transfer_out/redemption stage would need to revisit this column,
+     * which is out of scope here).
+     */
     public function shareLedger(int $memberId, int $uptoYear): array
     {
         try {
+            $where = $this->unmirroredWithdrawalWhere();
+            $source = ShareModel::SOURCE_WITHDRAWAL;
             $stmt = $this->db->prepare(
-                "SELECT withdrawal_date, withdrawal_number, retained_amount
-                 FROM `withdrawals`
-                 WHERE member_id = ? AND financial_year <= ? AND retained_amount > 0
-                 ORDER BY withdrawal_date ASC, id ASC"
+                "SELECT w.withdrawal_date AS txn_date, w.withdrawal_number AS ref,
+                        w.retained_amount AS amount, w.id AS sort_id, 'retained_withdrawal' AS ttype
+                 FROM `withdrawals` w
+                 WHERE w.member_id = ? AND w.financial_year <= ? AND $where
+                 UNION ALL
+                 SELECT st.transaction_date, COALESCE(st.reference_number, CONCAT('ST-', st.id)),
+                        st.amount, st.id, st.transaction_type
+                 FROM `share_transactions` st
+                 WHERE st.member_id = ? AND YEAR(st.transaction_date) <= ?
+                 ORDER BY txn_date ASC, sort_id ASC"
             );
-            $stmt->execute([$memberId, $uptoYear]);
+            $stmt->execute([$memberId, $uptoYear, $memberId, $uptoYear]);
 
             $balance = 0.0;
             $rows = [];
             foreach ($stmt->fetchAll() as $r) {
-                $balance += (float)$r['retained_amount'];
+                $balance += (float)$r['amount'];
                 $rows[] = [
-                    'date'        => $r['withdrawal_date'],
-                    'description' => 'Shares Retained (' . $r['withdrawal_number'] . ')',
+                    'date'        => $r['txn_date'],
+                    'description' => $this->shareLedgerDescription($r['ttype'], $r['ref']),
                     'debit'       => 0.0,
-                    'credit'      => (float)$r['retained_amount'],
+                    'credit'      => (float)$r['amount'],
                     'balance'     => $balance,
                 ];
             }

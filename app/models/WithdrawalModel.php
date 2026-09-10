@@ -275,6 +275,25 @@ class WithdrawalModel extends Model
             $this->update($withdrawalId, ['journal_entry_id' => $result['id']]);
             $this->db->prepare("UPDATE `savings` SET journal_entry_id = ? WHERE id = ?")->execute([$result['id'], $savingsId]);
 
+            // Stage 2 (Shares Module): mirror the retained portion into the
+            // share ledger, inside this SAME transaction -- not a second
+            // financial posting, just an ownership/history record pointing
+            // back at the journal entry already posted above. Zero-retained
+            // withdrawals (retained_amount == 0, e.g. a member who requests
+            // their full ceiling in cash) deliberately create no mirror row.
+            if ($retainedAmount > 0) {
+                (new ShareModel())->mirrorRetainedWithdrawal([
+                    'member_id'            => $memberId,
+                    'transaction_date'     => $withdrawalDate,
+                    'amount'               => $retainedAmount,
+                    'payment_method'       => $paymentMethod,
+                    'source_reference_id'  => $withdrawalId,
+                    'journal_entry_id'     => $result['id'],
+                    'processed_by'         => $userId,
+                    'reference_number'     => $withdrawalNumber,
+                ]);
+            }
+
             if ($ownTransaction) {
                 $this->db->commit();
             }

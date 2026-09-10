@@ -67,6 +67,27 @@
 </div>
 <?php endif; ?>
 
+<?php if ($canSeeShares): ?>
+<a class="nav-link <?= $sharesOpen ? '' : 'collapsed' ?>"
+   href="#viceChairmanSharesMenu" data-bs-toggle="collapse"
+   aria-expanded="<?= $sharesOpen ? 'true' : 'false' ?>"
+   aria-controls="viceChairmanSharesMenu">
+    <div class="sb-nav-link-icon"><i class="bi bi-pie-chart-fill"></i></div>
+    Shares
+    <div class="sb-sidenav-collapse-arrow ms-auto"><i class="bi bi-chevron-down"></i></div>
+</a>
+<div class="collapse <?= $sharesOpen ? 'show' : '' ?>" id="viceChairmanSharesMenu" data-bs-parent="#sidenavAccordion">
+    <nav class="sb-sidenav-menu-nested nav">
+        <a class="nav-link <?= isActive('shares') ?>" href="<?= APP_URL ?>/index.php?page=shares">
+            <i class="bi bi-list-ul me-2"></i> Overview
+        </a>
+        <a class="nav-link <?= isActive('report-shares') ?>" href="<?= APP_URL ?>/index.php?page=report-shares">
+            <i class="bi bi-file-bar-graph me-2"></i> Reports
+        </a>
+    </nav>
+</div>
+<?php endif; ?>
+
 <?php if ($canSeeLoansSection): ?>
 <a class="nav-link <?= $loansOpen ? '' : 'collapsed' ?>"
    href="#viceChairmanLoansMenu" data-bs-toggle="collapse"

@@ -32,6 +32,10 @@
     <div class="sb-nav-link-icon"><i class="bi bi-file-earmark-text"></i></div>
     Statements
 </a>
+<a class="nav-link <?= isActive('shares') ?>" href="<?= APP_URL ?>/index.php?page=shares">
+    <div class="sb-nav-link-icon"><i class="bi bi-pie-chart-fill"></i></div>
+    Shares
+</a>
 <a class="nav-link <?= isActive('weekly-savings') ?>" href="<?= APP_URL ?>/index.php?page=weekly-savings">
     <div class="sb-nav-link-icon"><i class="bi bi-calendar-week"></i></div>
     Weekly Reports

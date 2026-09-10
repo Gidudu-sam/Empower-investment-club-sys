@@ -244,8 +244,19 @@ if (!function_exists('waNumber')) {
         </a>
     </div>
 
+    <?php
+    // Navigation fix (Shares Module Stage 1): this card previously linked to
+    // ?page=withdrawals -- a copy-paste artifact, not the Shares page. It now
+    // points to the new Shares workspace (?page=shares), gated to the same
+    // role set as ShareController itself (mirrors report-shares' verified
+    // effective viewers) so the card never dead-ends into a 403 -- a viewer
+    // without Shares access still sees the same total, just not as a link.
+    $canSeeShares = Session::hasRole(['admin', 'treasurer', 'cashier', 'viewer', 'chairman', 'secretary', 'vice_chairman']);
+    ?>
     <div class="<?= $isChairman ? 'col-xl-4' : ($canSeeLoanWidgets ? 'col-xl-3' : 'col-xl-4') ?> col-6 col-lg-4">
-        <a href="<?= APP_URL ?>/index.php?page=withdrawals" class="text-decoration-none">
+        <?php if ($canSeeShares): ?>
+        <a href="<?= APP_URL ?>/index.php?page=shares" class="text-decoration-none">
+        <?php endif; ?>
             <div class="stat-card h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="stat-label">Total Shares</span>
@@ -254,7 +265,9 @@ if (!function_exists('waNumber')) {
                 <div class="stat-value" style="font-size:1.2rem"><span style="font-size:.75rem;color:var(--slate-soft);font-weight:500;">Shs</span> <?= number_format($totalShares, 0) ?></div>
                 <div class="stat-sub">Retained share capital</div>
             </div>
+        <?php if ($canSeeShares): ?>
         </a>
+        <?php endif; ?>
     </div>
 
     <?php if ($canSeeMemberFollowUp): ?>
@@ -332,14 +345,14 @@ if (!function_exists('waNumber')) {
 
     <?php if ($canSeeLoanFollowUp && !$isChairman): ?>
     <div class="col-xl-3 col-6 col-lg-4">
-        <a href="<?= APP_URL ?>/index.php?page=loans&filter=due-week" class="text-decoration-none">
+        <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#dueWeekLoansModal" class="text-decoration-none">
             <div class="stat-card h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="stat-label">Loans Due This Week</span>
                     <span class="stat-dot <?= $dueWeekLoans > 0 ? 'stat-dot-gold' : 'stat-dot-muted' ?>"></span>
                 </div>
                 <div class="stat-value" style="font-size:1.2rem"><?= number_format($dueWeekLoans) ?></div>
-                <div class="stat-sub">Due today: <?= $dueTodayLoans ?></div>
+                <div class="stat-sub">Due today: <?= $dueTodayLoans ?> · tap to view &amp; remind</div>
             </div>
         </a>
     </div>
@@ -347,14 +360,14 @@ if (!function_exists('waNumber')) {
 
     <?php if ($canSeeLoanFollowUp || $isChairman): ?>
     <div class="<?= $isChairman ? 'col-xl-4' : 'col-xl-3' ?> col-6 col-lg-4">
-        <a href="<?= APP_URL ?>/index.php?page=loans&filter=overdue" class="text-decoration-none">
+        <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#overdueLoansModal" class="text-decoration-none">
             <div class="stat-card h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="stat-label">Overdue Loans</span>
                     <span class="stat-dot <?= $overdueLoans > 0 ? 'stat-dot-rust' : 'stat-dot-muted' ?>"></span>
                 </div>
                 <div class="stat-value" style="font-size:1.2rem"><?= number_format($overdueLoans) ?></div>
-                <div class="stat-sub">Needs follow-up · Governance/portfolio-risk indicator</div>
+                <div class="stat-sub">Needs follow-up · tap to view &amp; remind</div>
             </div>
         </a>
     </div>
@@ -597,6 +610,145 @@ if (!function_exists('waNumber')) {
                                     <?php else: ?>
                                         <span class="text-muted">Never saved</span>
                                     <?php endif; ?>
+                                </td>
+                                <td class="text-center pe-3">
+                                    <?php if ($wa !== ''): ?>
+                                    <a href="https://wa.me/<?= $wa ?>?text=<?= urlencode($msg) ?>" target="_blank" rel="noopener"
+                                       class="btn btn-sm" style="background:#25D366;color:#fff;border:none;">
+                                        <i class="bi bi-whatsapp"></i>
+                                    </a>
+                                    <?php else: ?>
+                                    <span class="text-muted small">No phone</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modal: Loans due this week ───────────────────────────────── -->
+<div class="modal fade" id="dueWeekLoansModal" tabindex="-1" aria-labelledby="dueWeekLoansModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="dueWeekLoansModalLabel">
+                    <i class="bi bi-calendar-week-fill text-warning me-2"></i>Loans Due This Week
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Name</th>
+                                <th>Loan No.</th>
+                                <th>Contact</th>
+                                <th class="text-end">Outstanding</th>
+                                <th class="text-end">Due</th>
+                                <th class="text-center pe-3">Remind</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($dueWeekLoansList)): ?>
+                            <tr><td colspan="6" class="text-center py-4 text-muted">
+                                <i class="bi bi-check-circle fs-2 d-block mb-2 opacity-25"></i>
+                                No loans due this week.
+                            </td></tr>
+                            <?php else: foreach ($dueWeekLoansList as $dl):
+                                $wa  = waNumber($dl['phone'] ?? '');
+                                $due = (int)$dl['days_remaining'] === 0 ? 'today' : ('in ' . $dl['days_remaining'] . ' day' . ($dl['days_remaining'] == 1 ? '' : 's'));
+                                $msg = "Hi " . $dl['first_name'] . ", this is a friendly reminder from " . APP_NAME .
+                                       " that your loan repayment of Shs " . number_format($dl['outstanding'], 0) .
+                                       " is due on " . date('d M Y', strtotime($dl['due_date'])) . ". Thank you!";
+                            ?>
+                            <tr>
+                                <td class="ps-3">
+                                    <a href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= $dl['id'] ?>"
+                                       class="fw-semibold text-decoration-none small text-dark">
+                                        <?= htmlspecialchars($dl['first_name'] . ' ' . $dl['last_name']) ?>
+                                    </a>
+                                </td>
+                                <td class="small text-muted"><?= htmlspecialchars($dl['loan_number']) ?></td>
+                                <td class="small"><?= htmlspecialchars($dl['phone'] ?: '—') ?></td>
+                                <td class="text-end small">Shs <?= number_format($dl['outstanding'], 0) ?></td>
+                                <td class="text-end small">
+                                    <?= date('d M Y', strtotime($dl['due_date'])) ?>
+                                    <div class="text-muted" style="font-size:.68rem">Due <?= $due ?></div>
+                                </td>
+                                <td class="text-center pe-3">
+                                    <?php if ($wa !== ''): ?>
+                                    <a href="https://wa.me/<?= $wa ?>?text=<?= urlencode($msg) ?>" target="_blank" rel="noopener"
+                                       class="btn btn-sm" style="background:#25D366;color:#fff;border:none;">
+                                        <i class="bi bi-whatsapp"></i>
+                                    </a>
+                                    <?php else: ?>
+                                    <span class="text-muted small">No phone</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modal: Overdue loans ─────────────────────────────────────── -->
+<div class="modal fade" id="overdueLoansModal" tabindex="-1" aria-labelledby="overdueLoansModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="overdueLoansModalLabel">
+                    <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Overdue Loans
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Name</th>
+                                <th>Loan No.</th>
+                                <th>Contact</th>
+                                <th class="text-end">Outstanding</th>
+                                <th class="text-end">Overdue By</th>
+                                <th class="text-center pe-3">Remind</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($overdueLoansList)): ?>
+                            <tr><td colspan="6" class="text-center py-4 text-muted">
+                                <i class="bi bi-check-circle fs-2 d-block mb-2 opacity-25"></i>
+                                No overdue loans.
+                            </td></tr>
+                            <?php else: foreach ($overdueLoansList as $ol):
+                                $wa  = waNumber($ol['phone'] ?? '');
+                                $msg = "Hi " . $ol['first_name'] . ", this is a friendly reminder from " . APP_NAME .
+                                       " that your loan repayment of Shs " . number_format($ol['outstanding'], 0) .
+                                       " is now overdue. Please make a repayment at your earliest convenience. Thank you!";
+                            ?>
+                            <tr>
+                                <td class="ps-3">
+                                    <a href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= $ol['id'] ?>"
+                                       class="fw-semibold text-decoration-none small text-dark">
+                                        <?= htmlspecialchars($ol['first_name'] . ' ' . $ol['last_name']) ?>
+                                    </a>
+                                </td>
+                                <td class="small text-muted"><?= htmlspecialchars($ol['loan_number']) ?></td>
+                                <td class="small"><?= htmlspecialchars($ol['phone'] ?: '—') ?></td>
+                                <td class="text-end small">Shs <?= number_format($ol['outstanding'], 0) ?></td>
+                                <td class="text-end small">
+                                    <span class="text-danger fw-semibold"><?= $ol['days_overdue'] ?> day<?= $ol['days_overdue'] == 1 ? '' : 's' ?></span>
+                                    <div class="text-muted" style="font-size:.68rem">since <?= date('d M Y', strtotime($ol['due_date'])) ?></div>
                                 </td>
                                 <td class="text-center pe-3">
                                     <?php if ($wa !== ''): ?>

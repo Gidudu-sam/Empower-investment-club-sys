@@ -153,6 +153,14 @@ $routes = [
     'report-shares'          => ['ReportController',     'shares'],
     'report-withdrawals'     => ['ReportController',     'withdrawals'],
     'report-financial'       => ['ReportController',     'financial'],
+    // Shares module (Stage 1 — foundation & read-only workspace)
+    'shares'                 => ['ShareController',       'index'],
+    'share-member'           => ['ShareController',       'memberPosition'],
+    'share-member-search'    => ['ShareController',       'memberSearch'],
+    'share-historical-create' => ['ShareController',      'historicalCreate'],
+    'share-historical-store'  => ['ShareController',      'historicalStore'],
+    'share-transaction-create' => ['ShareController',     'currentTransactionCreate'],
+    'share-transaction-store'  => ['ShareController',     'currentTransactionStore'],
     // Settings module (comprehensive)
     'settings'               => ['SettingsController', 'general'],
     'settings-general'       => ['SettingsController', 'general'],

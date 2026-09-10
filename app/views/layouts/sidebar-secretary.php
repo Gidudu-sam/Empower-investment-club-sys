@@ -84,6 +84,12 @@
     <div class="sb-nav-link-icon"><i class="bi bi-piggy-bank"></i></div>
     Savings Report
 </a>
+<?php if ($canSeeShares): ?>
+<a class="nav-link <?= isActive('shares') ?>" href="<?= APP_URL ?>/index.php?page=shares">
+    <div class="sb-nav-link-icon"><i class="bi bi-pie-chart-fill"></i></div>
+    Shares
+</a>
+<?php endif; ?>
 <?php if ($canSeeFinancialReports): ?>
 <a class="nav-link <?= isActive('report-loans') ?>" href="<?= APP_URL ?>/index.php?page=report-loans">
     <div class="sb-nav-link-icon"><i class="bi bi-bank2"></i></div>

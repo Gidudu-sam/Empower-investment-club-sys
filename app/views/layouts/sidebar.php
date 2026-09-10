@@ -19,6 +19,9 @@ $loansOpen  = in_array($currentPage, $loanPages);
 $withdrawalPages = ['withdrawals','withdrawal-process','withdrawal-view','withdrawal-member','withdrawal-report'];
 $withdrawalsOpen = in_array($currentPage, $withdrawalPages);
 
+$sharePages = ['shares','share-member','share-historical-create','share-transaction-create'];
+$sharesOpen = in_array($currentPage, $sharePages);
+
 $financePages = ['contributions','expenses','expense-create','expense-store','expense-view','expense-post',
                  'other-income','other-income-create','other-income-store','other-income-view','other-income-post',
                  'internal-vouchers','internal-voucher-create','internal-voucher-store','internal-voucher-view',
@@ -96,6 +99,10 @@ $canSeeSavingsSection     = $canSeeSavingsLedger || $canSeeSavingsAccounts;
 
 $canSeeWithdrawals        = Session::hasRole(['admin','treasurer','cashier','viewer','chairman']);
 $canProcessWithdrawal     = Session::hasRole(['admin','treasurer','cashier']); // routine entry -- chairman excluded by design
+
+$canSeeShares              = Session::hasRole(['admin','treasurer','cashier','viewer','chairman','secretary','vice_chairman','office_admin']); // ShareController constructor
+$canRecordShareTransaction = Session::hasRole(['admin','treasurer','cashier','office_admin']); // ShareController::requireCurrentTransactionAccess()
+$canRecordHistoricalShares = Session::hasRole(['admin','treasurer']); // ShareController::requireWriteAccess()
 
 $canSeeLoans              = Session::hasRole(['admin','treasurer','viewer','chairman','loans_officer','vice_chairman']);
 $canAddLoan               = Session::hasRole(['admin','loans_officer']); // LoanController::requireOriginateAccess exact -- sidebar-redesign: treasurer no longer originates loans
@@ -317,6 +324,42 @@ $canSeeAdministrationSection = ($canSeeAdminPolicySettings || $canSeeAdminTechni
                         <?php endif; ?>
                         <a class="nav-link <?= isActive('withdrawal-report') ?>"
                            href="<?= APP_URL ?>/index.php?page=withdrawal-report">
+                            <i class="bi bi-file-bar-graph me-2"></i> Reports
+                        </a>
+                    </nav>
+                </div>
+                <?php endif; ?>
+
+                <!-- Shares -->
+                <?php if ($canSeeShares): ?>
+                <a class="nav-link <?= $sharesOpen ? '' : 'collapsed' ?>"
+                   href="#sharesMenu" data-bs-toggle="collapse"
+                   aria-expanded="<?= $sharesOpen ? 'true' : 'false' ?>"
+                   aria-controls="sharesMenu">
+                    <div class="sb-nav-link-icon"><i class="bi bi-pie-chart-fill"></i></div>
+                    Shares
+                    <div class="sb-sidenav-collapse-arrow ms-auto"><i class="bi bi-chevron-down"></i></div>
+                </a>
+                <div class="collapse <?= $sharesOpen ? 'show' : '' ?>" id="sharesMenu" data-bs-parent="#sidenavAccordion">
+                    <nav class="sb-sidenav-menu-nested nav">
+                        <a class="nav-link <?= isActive('shares') ?>"
+                           href="<?= APP_URL ?>/index.php?page=shares">
+                            <i class="bi bi-list-ul me-2"></i> Overview
+                        </a>
+                        <?php if ($canRecordShareTransaction): ?>
+                        <a class="nav-link <?= isActive('share-transaction-create') ?>"
+                           href="<?= APP_URL ?>/index.php?page=share-transaction-create">
+                            <i class="bi bi-plus-circle me-2"></i> Record Share Transaction
+                        </a>
+                        <?php endif; ?>
+                        <?php if ($canRecordHistoricalShares): ?>
+                        <a class="nav-link <?= isActive('share-historical-create') ?>"
+                           href="<?= APP_URL ?>/index.php?page=share-historical-create">
+                            <i class="bi bi-clock-history me-2"></i> Record Historical Shares
+                        </a>
+                        <?php endif; ?>
+                        <a class="nav-link <?= isActive('report-shares') ?>"
+                           href="<?= APP_URL ?>/index.php?page=report-shares">
                             <i class="bi bi-file-bar-graph me-2"></i> Reports
                         </a>
                     </nav>
