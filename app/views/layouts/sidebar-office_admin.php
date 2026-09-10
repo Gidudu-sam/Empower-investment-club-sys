@@ -104,9 +104,12 @@
             <i class="bi bi-plus-circle me-2"></i> Record Share Transaction
         </a>
         <?php endif; ?>
-        <a class="nav-link <?= isActive('report-shares') ?>" href="<?= APP_URL ?>/index.php?page=report-shares">
-            <i class="bi bi-file-bar-graph me-2"></i> Reports
-        </a>
+        <!-- No "Reports" (report-shares) link here on purpose: that route's
+             gate (ReportController::shares() -- admin/treasurer/cashier/
+             viewer/chairman/loans_officer/secretary/vice_chairman) does NOT
+             include office_admin, unlike the general $canSeeReports flag --
+             confirmed 403 live. The Overview page above already covers
+             office_admin's real access. -->
     </nav>
 </div>
 <?php endif; ?>
