@@ -1,0 +1,47 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Deny access to internal application directories -- these hold PHP
+    # source, models, and raw SQL/migration files reached only via PHP
+    # require/include (a filesystem operation, unaffected by this rule),
+    # never via a direct browser request.
+    RewriteRule ^(app|core|database)(/|$) - [F,L]
+
+    # SA-2 (2026-09) -- deny access to non-public project directories that
+    # sit in the web root alongside the application:
+    #   backups/    -- raw production SQL dumps + mysqldump error logs.
+    #                  The legitimate download feature (SettingsController::
+    #                  databaseDownload(), route settings-db-download) reads
+    #                  these server-side with readfile() and is unaffected
+    #                  by this rule -- only direct browser requests to a
+    #                  guessed/known filename under backups/ are blocked.
+    #   results/    -- ~460 files from past forensic/audit stages, incl.
+    #                  direct-PDO diagnostic scripts that connect straight
+    #                  to production with zero authentication.
+    #   stage5_page_action_alignment_audit/ -- internal audit reports.
+    #   .history/   -- editor local-history snapshots; has included old
+    #                  copies of config.php in the past.
+    #   .claude/    -- local AI-tooling configuration.
+    RewriteRule ^(backups|results|stage5_page_action_alignment_audit|\.history|\.claude)(/|$) - [F,L]
+
+    # Optional: route everything through index.php (uncomment if needed)
+    # RewriteCond %{REQUEST_FILENAME} !-f
+    # RewriteCond %{REQUEST_FILENAME} !-d
+    # RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# SA-2 (2026-09) -- deny direct HTTP access to every root-level PHP script
+# except the single public front controller, index.php. The previous
+# version of this block was an empty <FilesMatch> that enforced nothing --
+# every test, forensic, migration, and repair script in the project root
+# (60 files at last count, including scripts that write directly to
+# production with no authentication) was directly executable by an
+# anonymous browser request. This is the actual enforcement: a
+# negative-lookahead match that denies every "*.php" filename except
+# "index.php". (?i) makes it case-insensitive, since a future non-Windows
+# host would otherwise treat Index.php/INDEX.PHP as different files.
+<FilesMatch "(?i)^(?!index\.php$).*\.php$">
+    Require all denied
+</FilesMatch>

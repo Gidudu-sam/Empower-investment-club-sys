@@ -1,0 +1,46 @@
+# Composer-managed dependencies — regenerate via `composer install`
+# using the committed composer.lock. Never commit vendor/ itself.
+/vendor/
+
+# Historical/operational backups — contain real historical SQL dumps.
+# These live in the project folder for local operational convenience but
+# must never be pushed to a remote repository.
+/backups/
+/database/backups/
+
+# Audit trail and generated reports — large, historical, not application
+# source. Kept locally; excluded from version control per project decision
+# (2026-09-10) to keep the repository focused on the live codebase.
+/results/
+
+# Editor/tool-local artifacts — not part of the application.
+/.history/
+/.claude/
+
+# One-time historical recovery/reorganization artifacts and their
+# documentation (see REORGANIZATION_SUMMARY.md) — not current project docs.
+/stage5_page_action_alignment_audit/
+QUICK_START_GUIDE.md
+REORGANIZATION_SUMMARY.md
+
+# Raw brand-asset source files — not used at runtime (public/images/ holds
+# the actual deployed logos).
+/Empower Investment Logo/
+
+# Composer's own standalone CLI tool — not project source.
+composer.phar
+
+# Contain a hardcoded (now-revoked/stale) database password from an
+# earlier, apparently-abandoned attempt to create the empower_app MySQL
+# account -- discovered during git setup (2026-09-10). The password no
+# longer authenticates (this week's DROP USER/CREATE USER replaced it),
+# but a real credential -- live or dead -- should never enter git history.
+# Excluded rather than edited, since modifying test files was outside the
+# scope of the task that found this.
+tests/test_stage13f2_import_xss_csrf.php
+tests/test_stage13f3_financial_immutability.php
+tests/test_stage13f_auth_d02_self_reversal.php
+
+# OS artifacts
+Thumbs.db
+.DS_Store

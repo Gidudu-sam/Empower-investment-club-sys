@@ -1,0 +1,8 @@
+{
+    "name": "empower/investment-club",
+    "require": {
+        "minishlink/web-push": "^8.0",
+        "phpmailer/phpmailer": "^7.1",
+        "dompdf/dompdf": "^3.1"
+    }
+}

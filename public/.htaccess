@@ -1,0 +1,12 @@
+Options -Indexes
+
+# SA-2 (2026-09) -- public/ is a static-asset directory (css/js/images/
+# uploads); no PHP script here should ever execute via a direct browser
+# request. This closes a stray, orphaned view file
+# (income-statement-index.php) that has no controller/route reference and
+# would otherwise throw raw PHP errors -- potentially disclosing internal
+# path/constant names -- if requested directly. It also hardens
+# uploads/ against a hypothetical future upload-then-execute bypass.
+<FilesMatch "\.php$">
+    Require all denied
+</FilesMatch>

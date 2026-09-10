@@ -1,0 +1,12 @@
+{
+  "name": "Empower Investment Club",
+  "short_name": "Empower",
+  "start_url": "/empower/index.php?page=dashboard",
+  "scope": "/empower/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1f3a",
+  "icons": [
+    { "src": "/empower/public/images/logo.png", "sizes": "1024x1024", "type": "image/png" }
+  ]
+}

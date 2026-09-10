@@ -1,0 +1,733 @@
+/* ============================================================
+   Empower Investment Club — Fintech UI v3
+   Exact match to mockup: navy-950 sidebar, brass accent,
+   editorial ledger-strip, hairline borders, Space Grotesk
+   ============================================================ */
+
+:root {
+    --navy-950:    #0B1229;
+    --navy-900:    #101A3D;
+    --navy-800:    #182552;
+    --navy-700:    #1E3060;
+    --paper:       #F5F6FA;
+    --surface:     #FFFFFF;
+    --ink:         #171B2E;
+    --slate:       #6B7280;
+    /* Contrast fix (2026-09): was #9AA1B4 (~2.6:1 on white -- fails WCAG AA
+     * for text). This token backs .text-muted, .stat-label, .stat-sub,
+     * .detail-label, and .form-text -- i.e. most secondary/label text across
+     * the app, so the old value made a large share of on-screen text hard to
+     * read. New value keeps it visibly lighter than --slate while passing
+     * AA (~4.55:1). */
+    --slate-soft:  #6E7689;
+    --hairline:    #E5E7F0;
+    --gold:        #B8892B;
+    --gold-deep:   #8F6A1E;
+    --gold-soft:   #F4E9D2;
+    --green:       #2F6B4F;
+    --green-soft:  #E4F0E9;
+    --rust:        #9C4221;
+    --rust-soft:   #F3E4DB;
+
+    /* Compat aliases */
+    --brand-navy:        #1B2B6B;
+    --brand-navy-dark:   var(--navy-900);
+    --brand-navy-light:  var(--navy-800);
+    --brand-orange:      var(--gold);
+    --brand-orange-dark: var(--gold-deep);
+    --brand-orange-light:var(--gold-soft);
+
+    --nav-height:    52px;
+    --sidebar-width: 248px;
+    --sidebar-bg:    var(--navy-950);
+    --body-bg:       var(--paper);
+    --card-bg:       var(--surface);
+
+    --bs-primary:     #1B2B6B;
+    --bs-primary-rgb: 27,43,107;
+}
+
+/* ── Reset ───────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: .8125rem;
+    font-weight: 400;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   TOPBAR — white, minimal, breadcrumb left, avatar right
+   ============================================================ */
+.sb-topnav,
+.sb-topnav.bg-primary,
+nav.sb-topnav {
+    position: fixed !important;
+    top: 0 !important;
+    left: var(--sidebar-width) !important;
+    right: 0 !important;
+    height: var(--nav-height) !important;
+    z-index: 1030 !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 1.5rem !important;
+    background: var(--surface) !important;
+    border-bottom: 1px solid var(--hairline) !important;
+    box-shadow: none !important;
+}
+.sb-topnav::after { display: none; }
+
+/* Hide brand in topbar (it's in sidebar now) */
+.sb-topnav .navbar-brand { display: none !important; }
+
+/* Toggle button in topbar */
+.sb-topnav #sidebarToggle {
+    color: var(--slate) !important;
+    text-decoration: none;
+    font-size: 1.1rem;
+    padding: 0 .5rem;
+}
+.sb-topnav #sidebarToggle:hover { color: var(--ink) !important; }
+
+/* Topbar right items */
+.sb-topnav .navbar-nav { gap: .25rem; }
+.sb-topnav .nav-link {
+    color: var(--slate) !important;
+    padding: .35rem .5rem;
+}
+.sb-topnav .nav-link:hover { color: var(--ink) !important; }
+
+/* Avatar chip */
+.sb-topnav .rounded-circle {
+    background: var(--navy-900) !important;
+    border: none !important;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: .72rem !important;
+}
+
+/* User name */
+.sb-topnav .dropdown-toggle span {
+    color: var(--ink) !important;
+    font-size: .78rem;
+    font-weight: 500;
+}
+.sb-topnav .dropdown-toggle .bi-chevron-down { color: var(--slate-soft) !important; font-size: .55rem; }
+
+/* Notification bell badge */
+#notif-badge {
+    font-size: .5rem !important;
+    padding: 2px 4px !important;
+}
+
+/* ============================================================
+   SIDEBAR — full height, navy-950, gold active indicator
+   ============================================================ */
+#layoutSidenav { display: flex; min-height: 100vh; padding-top: 0; }
+
+#layoutSidenav_nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    z-index: 1040;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--sidebar-bg);
+    transition: transform .2s ease;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.06) transparent;
+}
+#layoutSidenav_nav::-webkit-scrollbar { width: 4px; }
+#layoutSidenav_nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.06); border-radius: 4px; }
+
+.sb-sidenav {
+    background: var(--sidebar-bg);
+    color: rgba(255,255,255,.6);
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+.sb-sidenav-menu { flex: 1; padding-top: .25rem; }
+
+/* Brand area at top of sidebar */
+.sb-sidenav .navbar-brand,
+.sb-topnav .navbar-brand {
+    display: none !important;
+}
+
+/* Section headings */
+.sb-sidenav-menu-heading {
+    padding: 1.5rem 1.25rem .4rem;
+    font-size: .56rem;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.22);
+    font-family: 'Inter', sans-serif;
+    width: 100%;
+}
+
+/* Nav links -- explicit full-width + block-level guarantee so items always
+   stack one per row, never side-by-side, regardless of any flex context
+   a parent picks up (e.g. a stale/partially-loaded stylesheet). */
+.sb-sidenav .nav-link {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: .65rem;
+    padding: .55rem 1.25rem;
+    color: rgba(255,255,255,.55);
+    font-size: .8rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color .15s, background .15s, border-color .15s;
+    margin: 0;
+}
+.sb-sidenav .nav-link:hover {
+    color: rgba(255,255,255,.85);
+    background: rgba(255,255,255,.03);
+}
+.sb-sidenav .nav-link.active {
+    color: #fff;
+    background: rgba(184,137,43,.08);
+    border-left-color: var(--gold);
+    font-weight: 600;
+}
+
+.sb-nav-link-icon {
+    width: 1rem;
+    text-align: center;
+    font-size: .88rem;
+    flex-shrink: 0;
+    opacity: .65;
+}
+.sb-sidenav .nav-link.active .sb-nav-link-icon { opacity: 1; }
+
+.sb-sidenav-collapse-arrow { font-size: .58rem; opacity: .4; transition: transform .2s; }
+.sb-sidenav .nav-link:not(.collapsed) .sb-sidenav-collapse-arrow { transform: rotate(-180deg); }
+
+/* Nested */
+.sb-sidenav-menu-nested { background: rgba(0,0,0,.1); }
+.sb-sidenav-menu-nested .nav-link {
+    font-size: .76rem;
+    padding: .4rem 1.25rem .4rem 2.5rem;
+    border-left: none;
+    color: rgba(255,255,255,.45);
+}
+.sb-sidenav-menu-nested .nav-link:hover { color: rgba(255,255,255,.8); }
+.sb-sidenav-menu-nested .nav-link.active {
+    color: var(--gold-soft);
+    background: rgba(184,137,43,.05);
+    font-weight: 600;
+}
+
+/* Footer */
+.sb-sidenav-footer {
+    padding: .8rem 1.25rem;
+    background: rgba(0,0,0,.2);
+    font-size: .65rem;
+    color: rgba(255,255,255,.28);
+    border-top: 1px solid rgba(255,255,255,.04);
+}
+.sb-sidenav-footer strong { display: block; color: rgba(255,255,255,.7); font-size: .75rem; margin-top: 2px; }
+
+/* ============================================================
+   CONTENT
+   ============================================================ */
+#layoutSidenav_content {
+    margin-left: var(--sidebar-width);
+    margin-top: var(--nav-height);
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - var(--nav-height));
+    transition: margin .2s ease;
+}
+#layoutSidenav_content main { flex: 1; padding-bottom: 2rem; }
+
+body.sb-sidenav-toggled #layoutSidenav_nav { transform: translateX(calc(var(--sidebar-width) * -1)); }
+body.sb-sidenav-toggled #layoutSidenav_content { margin-left: 0; }
+body.sb-sidenav-toggled .sb-topnav { left: 0 !important; }
+
+@media (max-width: 991.98px) {
+    #layoutSidenav_nav { transform: translateX(calc(var(--sidebar-width) * -1)); }
+    #layoutSidenav_content { margin-left: 0; }
+    .sb-topnav, .sb-topnav.bg-primary, nav.sb-topnav { left: 0 !important; }
+    body.sb-sidenav-toggled #layoutSidenav_nav { transform: translateX(0); }
+}
+
+/* ============================================================
+   BREADCRUMB — tighten Bootstrap's default ~1rem gap per divider
+   (0.5rem padding on both the item and its "/" divider stack up to
+   feel disconnected from the rest of this app's compact spacing) down
+   to match the smaller, denser type already used everywhere else.
+   ============================================================ */
+.breadcrumb {
+    --bs-breadcrumb-divider-color: var(--slate-soft);
+    font-size: .82rem;
+    margin-bottom: 0;
+}
+.breadcrumb-item + .breadcrumb-item { padding-left: .35rem; }
+.breadcrumb-item + .breadcrumb-item::before { padding-right: .35rem; }
+.breadcrumb-item a { text-decoration: none; }
+.breadcrumb-item a:hover { text-decoration: underline; }
+.breadcrumb-item i { margin-right: .25rem !important; }
+
+/* ============================================================
+   LEDGER STRIP — dark bank-statement hero
+   ============================================================ */
+.ledger-strip {
+    background: var(--navy-950);
+    border-radius: .6rem;
+    padding: 1.4rem 1.75rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+}
+.ledger-strip::before {
+    content: '';
+    position: absolute;
+    top: -50px; right: -50px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(184,137,43,.1) 0%, transparent 70%);
+    pointer-events: none;
+}
+.ledger-cell {
+    padding: .4rem 1.25rem;
+    border-right: 1px solid rgba(255,255,255,.07);
+}
+.ledger-cell:last-child { border-right: none; }
+.ledger-cell:first-child { padding-left: 0; }
+
+.ledger-eyebrow {
+    font-size: .54rem;
+    font-weight: 600;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.35);
+    margin-bottom: .3rem;
+}
+.ledger-figure {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.4rem;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+.ledger-figure .currency {
+    font-size: .7rem;
+    font-weight: 400;
+    color: rgba(255,255,255,.4);
+    margin-right: .2rem;
+}
+.ledger-note { font-size: .64rem; color: rgba(255,255,255,.35); margin-top: .2rem; }
+.ledger-note.positive { color: var(--gold); }
+
+@media (max-width: 767.98px) {
+    .ledger-strip { grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .ledger-cell { border-bottom: 1px solid rgba(255,255,255,.05); padding: .6rem .75rem; }
+    .ledger-cell:nth-child(2n) { border-right: none; }
+}
+
+/* ============================================================
+   STAT CARDS — white, hairline, status dot
+   ============================================================ */
+.stat-card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: .45rem;
+    padding: 1rem 1.1rem;
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color .15s;
+    /* Stretches every card to match the tallest sibling in its row --
+       .row's own align-items:stretch only sizes the .col, not this
+       block-level card inside it, so two cards whose values wrap
+       differently (one short, one long) looked visibly different
+       heights without this. */
+    height: 100%;
+    box-sizing: border-box;
+}
+.stat-card:hover { border-color: #cdd1de; color: inherit; text-decoration: none; }
+.stat-card::before { display: none; }
+
+/* A flex child's default min-width is its content's natural width, not
+   0 -- so the label+value column here refused to shrink below a long
+   figure's full-digit width and pushed straight past the card's edge
+   instead of wrapping (confirmed: "Shs 1,238,055,862.xx" clipped at a
+   card boundary on a 50%-width mobile column). This lets it shrink and
+   wrap onto a second line within the card instead. */
+.stat-card .d-flex.gap-3 > div:last-child { min-width: 0; }
+.stat-value { overflow-wrap: break-word; }
+
+/* Compat color classes — all just hairline */
+.stat-card-primary,.stat-card-success,.stat-card-warning,.stat-card-info,.stat-card-danger,.stat-card-accent {
+    border: 1px solid var(--hairline);
+}
+
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.stat-dot-green { background: var(--green); }
+.stat-dot-gold  { background: var(--gold); }
+.stat-dot-rust  { background: var(--rust); }
+.stat-dot-muted { background: var(--slate-soft); }
+
+.stat-icon-box {
+    width: 38px; height: 38px;
+    border-radius: .35rem;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; flex-shrink: 0;
+    background: var(--paper); color: var(--slate);
+}
+.stat-icon-primary { background: rgba(27,43,107,.05); color: var(--brand-navy); }
+.stat-icon-success { background: var(--green-soft); color: var(--green); }
+.stat-icon-warning { background: var(--gold-soft); color: var(--gold-deep); }
+.stat-icon-info    { background: rgba(11,18,41,.03); color: var(--navy-800); }
+.stat-icon-danger  { background: var(--rust-soft); color: var(--rust); }
+.stat-icon-accent  { background: var(--gold-soft); color: var(--gold-deep); }
+
+.stat-label {
+    font-size: .58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--slate-soft);
+    margin-bottom: 2px;
+}
+.stat-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+.stat-sub { font-size: .64rem; color: var(--slate-soft); margin-top: 2px; }
+
+/* Highlight variant (e.g. "Interest Earned") -- shares .stat-card's base
+   look but adds an accent bar + a larger icon. Was previously inline
+   styles duplicated across 3 view files with a hardcoded 52px icon that
+   left no room for its value on a 50%-width mobile card. */
+.stat-card-highlight {
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 0 1px 8px rgba(27,43,107,.07);
+    border-radius: .6rem;
+    padding: 1.25rem 1.5rem;
+}
+.stat-card-highlight-bar {
+    position: absolute; top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: #F47920;
+    border-radius: .6rem 0 0 .6rem;
+}
+.stat-icon-box-lg {
+    width: 52px; height: 52px;
+    border-radius: .5rem;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.55rem; flex-shrink: 0;
+    background: rgba(244,121,32,.12); color: #F47920;
+}
+@media (max-width: 575.98px) {
+    .stat-card-highlight { padding: .65rem; }
+    .stat-icon-box-lg { width: 26px; height: 26px; font-size: .85rem; }
+}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+.card {
+    border: 1px solid var(--hairline);
+    border-radius: .45rem;
+    box-shadow: none;
+    background: var(--surface);
+}
+.card-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+    border-radius: .45rem .45rem 0 0 !important;
+    padding: .75rem 1.1rem;
+    font-size: .8rem;
+}
+.card-footer {
+    background: var(--paper);
+    border-top: 1px solid var(--hairline);
+    border-radius: 0 0 .45rem .45rem !important;
+}
+
+/* ============================================================
+   TABLES — compact, hairline rows
+   ============================================================ */
+.table { font-size: .78rem; margin-bottom: 0; }
+.table thead th {
+    font-size: .58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--slate);
+    background: var(--paper);
+    border-bottom: 1px solid var(--hairline);
+    padding: .6rem .7rem;
+}
+.table td {
+    padding: .6rem .7rem;
+    border-bottom: 1px solid var(--hairline);
+    vertical-align: middle;
+}
+.table tbody tr:last-child td { border-bottom: none; }
+.table-hover tbody tr:hover { background: rgba(11,18,41,.012); }
+.table tfoot { border-top: 1px solid var(--hairline); }
+.table tfoot td { font-size: .78rem; }
+
+/* ============================================================
+   BUTTONS — flat, minimal
+   ============================================================ */
+.btn { font-size: .78rem; font-weight: 500; border-radius: .35rem; padding: .4rem .85rem; }
+.btn-sm { font-size: .72rem; padding: .3rem .65rem; }
+
+.btn-primary { background: var(--brand-navy) !important; border-color: var(--brand-navy) !important; color: #fff !important; }
+.btn-primary:hover { background: var(--navy-900) !important; border-color: var(--navy-900) !important; }
+
+.btn-outline-primary { color: var(--brand-navy) !important; border-color: var(--hairline) !important; }
+.btn-outline-primary:hover { background: var(--brand-navy) !important; border-color: var(--brand-navy) !important; color: #fff !important; }
+
+.btn-outline-secondary { color: var(--slate) !important; border-color: var(--hairline) !important; }
+.btn-outline-secondary:hover { background: var(--paper) !important; color: var(--ink) !important; }
+
+.btn-outline-success { color: var(--green) !important; border-color: var(--hairline) !important; }
+.btn-outline-success:hover { background: var(--green-soft) !important; color: var(--green) !important; }
+
+/* ============================================================
+   FILTER PILLS (segmented type/status filter strips, e.g. Savings
+   Accounts' Compulsory/Voluntary/Joint/Corporate row). Previously plain
+   .btn-outline-secondary, which meant every pill -- selected or not --
+   rendered in the same flat slate blue-gray, with only a dull gray fill
+   marking the active one. Uses the app's warm brass/gold accent for the
+   selected pill instead, so it reads as a deliberate choice rather than
+   "everything the same wash of blue."
+   ============================================================ */
+/* Bootstrap's .btn-group is inline-flex with no wrap by default -- with
+   7 pills (All/Compulsory/Voluntary/Joint/Corporate/Fixed Monthly/Fixed
+   Deposit) it doesn't fit a phone width, and with nothing here to
+   contain it, it forced the WHOLE PAGE to scroll horizontally instead
+   of just this row (confirmed: a page shifted left with even the
+   navbar title clipped, not just this control). Scoped horizontal
+   scroll on the pill row itself keeps the page body fixed. */
+.filter-pills {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+.filter-pills .btn { flex-shrink: 0; }
+.filter-pills .btn {
+    color: var(--ink); background: var(--surface); border-color: var(--hairline);
+}
+.filter-pills .btn:hover { background: var(--paper); color: var(--ink); border-color: var(--slate-soft); }
+.filter-pills .btn.active,
+.filter-pills .btn-check:checked + .btn {
+    background: var(--gold-deep); border-color: var(--gold-deep); color: #fff;
+}
+
+.btn-outline-danger { color: var(--rust) !important; border-color: var(--hairline) !important; }
+.btn-outline-danger:hover { background: var(--rust-soft) !important; color: var(--rust) !important; }
+
+.btn-outline-warning { color: var(--gold-deep) !important; border-color: var(--hairline) !important; }
+.btn-outline-warning:hover { background: var(--gold-soft) !important; color: var(--gold-deep) !important; }
+
+.btn-success { background: var(--green) !important; border-color: var(--green) !important; color: #fff !important; }
+.btn-warning { background: var(--gold) !important; border-color: var(--gold) !important; color: #fff !important; }
+.btn-danger  { background: var(--rust) !important; border-color: var(--rust) !important; color: #fff !important; }
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+.form-control,.form-select { font-size: .8rem; border-color: var(--hairline); border-radius: .3rem; }
+.form-control:focus,.form-select:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(184,137,43,.08); }
+.form-label { font-size: .74rem; font-weight: 600; color: var(--ink); }
+.form-text { font-size: .68rem; color: var(--slate-soft); }
+.input-group-text { font-size: .78rem; border-color: var(--hairline); background: var(--paper); }
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+.badge { font-weight: 600; font-size: .6rem; letter-spacing: .02em; border-radius: .25rem; }
+.bg-primary-subtle   { background: rgba(27,43,107,.06) !important; }
+.bg-success-subtle   { background: var(--green-soft) !important; }
+.bg-warning-subtle   { background: var(--gold-soft) !important; }
+.bg-danger-subtle    { background: var(--rust-soft) !important; }
+.bg-secondary-subtle { background: var(--paper) !important; }
+.bg-info-subtle      { background: rgba(11,18,41,.03) !important; }
+
+.text-primary  { color: var(--brand-navy) !important; }
+.text-success  { color: var(--green) !important; }
+.text-warning  { color: var(--gold-deep) !important; }
+.text-danger   { color: var(--rust) !important; }
+.text-info     { color: var(--navy-800) !important; }
+.text-muted    { color: var(--slate-soft) !important; }
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
+.alert { border-radius: .35rem; font-size: .78rem; border: 1px solid; }
+.alert-success { background: var(--green-soft); border-color: rgba(47,107,79,.15); color: var(--green); }
+.alert-warning { background: var(--gold-soft); border-color: rgba(184,137,43,.2); color: var(--gold-deep); }
+.alert-danger  { background: var(--rust-soft); border-color: rgba(156,66,33,.15); color: var(--rust); }
+.alert-info    { background: rgba(27,43,107,.04); border-color: rgba(27,43,107,.1); color: var(--brand-navy); }
+
+/* ============================================================
+   PAGINATION
+   ============================================================ */
+.pagination .page-link { font-size: .72rem; color: var(--brand-navy); border-color: var(--hairline); padding: .3rem .6rem; }
+.pagination .page-item.active .page-link { background: var(--brand-navy); border-color: var(--brand-navy); }
+
+/* ============================================================
+   NAV PILLS (settings tabs)
+   ============================================================ */
+.nav-pills .nav-link {
+    font-size: .72rem; font-weight: 500;
+    color: var(--slate); border: 1px solid var(--hairline);
+    border-radius: .3rem; padding: .35rem .75rem;
+}
+.nav-pills .nav-link.active { background: var(--brand-navy); border-color: var(--brand-navy); color: #fff; }
+.nav-pills .nav-link:not(.active):hover { background: var(--paper); color: var(--ink); }
+
+/* ============================================================
+   DROPDOWN MENUS
+   ============================================================ */
+.dropdown-menu { font-size: .78rem; border: 1px solid var(--hairline); box-shadow: 0 4px 16px rgba(11,18,41,.08); border-radius: .4rem; }
+.dropdown-item { padding: .45rem 1rem; font-size: .78rem; }
+.dropdown-item:hover { background: var(--paper); }
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+.login-page { background: var(--navy-950); min-height: 100vh; }
+.login-page::before,.login-page::after { content:''; position:fixed; border-radius:50%; opacity:.06; pointer-events:none; }
+.login-page::before { width:400px; height:400px; background:var(--gold); top:-100px; right:-100px; }
+.login-page::after { width:300px; height:300px; background:var(--gold); bottom:-80px; left:-80px; }
+.login-page .card { animation: fadeIn .35s ease; border-radius:.6rem; border:1px solid rgba(255,255,255,.04); box-shadow:0 16px 48px rgba(0,0,0,.25); }
+@keyframes fadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+.login-card-header { background:linear-gradient(135deg,var(--navy-900),var(--navy-800)); padding:1.75rem 2rem 1.25rem; text-align:center; position:relative; }
+.login-card-header::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--gold),var(--gold-soft)); }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer { background: var(--surface) !important; border-top: 1px solid var(--hairline) !important; font-size: .7rem; }
+
+/* ============================================================
+   AVATARS
+   ============================================================ */
+.member-avatar-sm {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: .68rem; color: #fff; flex-shrink: 0;
+    background: var(--navy-800);
+}
+.member-avatar-lg {
+    width: 72px; height: 72px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.8rem; color: #fff;
+    background: var(--navy-800);
+}
+.bg-blue { background: var(--navy-800) !important; }
+.bg-pink { background: var(--rust) !important; }
+
+/* ============================================================
+   DETAIL LABELS
+   ============================================================ */
+.detail-label { font-size: .58rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--slate-soft); margin-bottom: 2px; }
+.detail-value { font-size: .82rem; color: var(--ink); }
+
+/* ============================================================
+   COMING SOON
+   ============================================================ */
+.coming-soon-icon { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; background: var(--paper); color: var(--slate); }
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+.text-xs       { font-size: .65rem; }
+.text-gray-800 { color: var(--ink); }
+.fw-800        { font-weight: 800; }
+.rounded-xl    { border-radius: .6rem; }
+.font-display  { font-family: 'Space Grotesk', sans-serif; }
+h1,h2,h3,.h1,.h2,.h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+
+/* Tabular nums on key areas */
+.stat-value,.ledger-figure,.table td,.fw-bold,.fw-semibold { font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   PRINT
+   ============================================================ */
+@media print {
+    .no-print { display: none !important; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+    .sb-topnav, #layoutSidenav_nav { display: none !important; }
+    #layoutSidenav_content { margin-left: 0 !important; margin-top: 0 !important; }
+}
+
+@media (max-width: 991.98px) {
+    #layoutSidenav_nav { transform: translateX(calc(var(--sidebar-width) * -1)); }
+    #layoutSidenav_content { margin-left: 0 !important; }
+    .sb-topnav, .sb-topnav.bg-primary, nav.sb-topnav { left: 0 !important; }
+    body.sb-sidenav-toggled #layoutSidenav_nav { transform: translateX(0); }
+    body.sb-sidenav-toggled #layoutSidenav_content { margin-left: 0 !important; }
+
+    /* Show toggle button */
+    #sidebarToggle { display: inline-block !important; }
+}
+
+@media (max-width: 767.98px) {
+    /* Bootstrap's own .px-4 utility (applied on the same element in
+       layouts/main.php/footer.php) compiles to
+       padding-left/right:1.5rem!important -- this override has to match
+       that !important to actually win; without it (confirmed directly
+       against the real Bootstrap 5.3.3 CDN build), this rule silently
+       lost on every screen size ever since it was written, and every
+       page has been stuck at the full 1.5rem/24px desktop padding on
+       mobile instead of this intended, tighter .75rem/12px. */
+    .container-fluid { padding-left: .75rem !important; padding-right: .75rem !important; }
+    .ledger-strip { grid-template-columns: 1fr 1fr; gap: .25rem; padding: .75rem; }
+    .ledger-cell { border-right: none; border-bottom: 1px solid rgba(255,255,255,.05); padding: .5rem; }
+    .card-body { padding: .75rem; }
+    h1,.h1,.h2,.h3 { font-size: 1.15rem; }
+    [style*="position:sticky"] { position: static !important; }
+}
+
+@media (max-width: 575.98px) {
+    .table td,.table th { font-size: .7rem; padding: .45rem; }
+    .ledger-strip { padding: .6rem; grid-template-columns: 1fr; }
+    .ledger-figure { font-size: 1.1rem; }
+    .btn { font-size: .72rem; padding: .35rem .6rem; }
+    .stat-card { padding: .65rem; }
+    /* A 38px icon plus its 1rem (gap-3) gap ate too much of a stat
+       card's width once cards go 2-per-row on mobile, pushing the
+       figure past the card's edge (confirmed: "Shs 80,000,000.00" next
+       to a full-size icon in a 50%-width card). Shrinking both frees up
+       real room for the number instead of just shrinking its font,
+       which wouldn't have been enough on its own for a long figure. */
+    .stat-icon-box { width: 26px; height: 26px; font-size: .85rem; }
+    .stat-card .gap-3 { gap: .4rem !important; }
+    /* A longer real figure ("Shs 1,238,055,862.65") still didn't fit even
+       after the icon/gap shrink above and was breaking mid-digit-group
+       ("1,238,055,86" / "2.65") -- most of these values carry an inline
+       style="font-size:1.1rem" (higher specificity than any class), so
+       this needs !important to actually take effect on mobile. */
+    .stat-value { font-size: .8rem !important; }
+}

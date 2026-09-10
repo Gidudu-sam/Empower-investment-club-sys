@@ -1,0 +1,652 @@
+<?php
+require_once CORE_PATH . '/Controller.php';
+require_once APP_PATH  . '/models/SavingsModel.php';
+require_once APP_PATH  . '/models/MemberModel.php';
+require_once APP_PATH  . '/models/SavingsAccountHolderModel.php';
+require_once APP_PATH  . '/models/MemberSavingsAccountModel.php';
+
+/**
+ * SavingsController
+ *
+ * Routes:
+ *   savings                     → index()
+ *   savings-add                 → add()
+ *   savings-edit                → edit()
+ *   savings-view                → view()
+ *   savings-delete              → delete()
+ *   savings-receipt             → receipt()   (printable / PDF)
+ *   savings-member               → memberSavings()
+ *   savings-report               → report()
+ *   savings-member-search        → memberSearch()  (AJAX)
+ *   savings-add-member-accounts  → memberAccountsForAdd()  (AJAX)
+ */
+class SavingsController extends Controller
+{
+    private SavingsModel $model;
+    private MemberModel  $memberModel;
+
+    public function __construct()
+    {
+        $this->model       = new SavingsModel();
+        $this->memberModel = new MemberModel();
+    }
+
+    // ----------------------------------------------------------------
+    // LIST
+    // ----------------------------------------------------------------
+    public function index(): void
+    {
+        Session::requireAuth();
+
+        $term     = trim($_GET['search']    ?? '');
+        $year     = trim($_GET['year']      ?? '');
+        $month    = trim($_GET['month']     ?? '');
+        $dateFrom = trim($_GET['date_from'] ?? '');
+        $dateTo   = trim($_GET['date_to']   ?? '');
+        $method   = trim($_GET['method']    ?? '');
+        $memberId = (int)($_GET['member_id'] ?? 0);
+        $page     = max(1, (int)($_GET['p']  ?? 1));
+
+        $result = $this->model->search(
+            $term, $year, $month, $dateFrom, $dateTo, $method, $memberId, $page, 15
+        );
+
+        $this->render('savings/index', [
+            'pageTitle'     => 'Savings — ' . APP_NAME,
+            'breadcrumbs'   => [['label' => 'Savings']],
+            'savings'       => $result['rows'],
+            'total'         => $result['total'],
+            'pages'         => $result['pages'],
+            'currentPage'   => $page,
+            'filteredTotal' => $result['filteredTotal'],
+            'search'        => $term,
+            'year'          => $year,
+            'month'         => $month,
+            'dateFrom'      => $dateFrom,
+            'dateTo'        => $dateTo,
+            'method'        => $method,
+            'memberId'      => $memberId,
+            'years'         => $this->model->getFinancialYears(),
+            'totalSavings'  => $this->model->totalSavings(),
+            'todayTotal'    => $this->model->todayTotal(),
+            'monthTotal'    => $this->model->monthTotal(),
+            'success'       => Session::flash('success'),
+            'error'         => Session::flash('error'),
+            'csrfToken'     => $this->getCsrf(),
+        ], 'main');
+    }
+
+    // ----------------------------------------------------------------
+    // ADD ("Record Savings" quick-start)
+    //
+    // Stage 5B retired this as a member-first, account-less entry point
+    // (every deposit must be tied to a specific savings account -- see the
+    // history this docblock used to carry) and simply redirected here to
+    // the full Savings Accounts register. That made "Record Savings" and
+    // "Savings Accounts" look like the exact same page with no distinct
+    // purpose of its own (2026-09 report). This still does not create a
+    // standalone, unlinked savings row -- it is a member+account picker
+    // only, and the actual deposit is still recorded through the same
+    // unchanged, account-first SavingsAccountController::depositForm()/
+    // depositStore() flow. It just gets there in two clicks (find member,
+    // pick their account) instead of hunting the member down in the full
+    // accounts register. edit()/handleSave($id, ...) for EXISTING rows is
+    // untouched below.
+    // ----------------------------------------------------------------
+    public function add(): void
+    {
+        Session::requireAuth();
+
+        // "New Deposit" links from a member's own profile
+        // (members/view.php) already pass ?member_id=X -- previously this
+        // page ignored it entirely and always started at an empty search
+        // box, forcing the cashier to re-search a member they'd just been
+        // looking at. Pre-load that member here so the page can skip
+        // straight to the account picker.
+        $preselectedMember = null;
+        $memberId = (int)($_GET['member_id'] ?? 0);
+        if ($memberId > 0) {
+            $m = $this->memberModel->find($memberId);
+            if ($m) {
+                $preselectedMember = [
+                    'id'            => (int)$m['id'],
+                    'full_name'     => trim($m['first_name'] . ' ' . $m['last_name']),
+                    'member_number' => $m['member_number'],
+                ];
+            }
+        }
+
+        $this->render('savings/add', [
+            'pageTitle'      => 'Record Savings — ' . APP_NAME,
+            'breadcrumbs'    => [['label' => 'Savings', 'url' => APP_URL . '/index.php?page=savings'], ['label' => 'Record Savings']],
+            'canDeposit'     => Session::hasRole(['admin', 'treasurer', 'cashier', 'office_admin']),
+            'csrfToken'      => $this->getCsrf(),
+            'preselectedMember' => $preselectedMember,
+        ], 'main');
+    }
+
+    /** AJAX: this member's active, deposit-eligible savings accounts (the
+     *  same eligibility SavingsAccountController::depositForm()/
+     *  resolveTransactionMember() enforce -- corporate and Fixed Deposit
+     *  are excluded, matching both) with live balances and, for joint
+     *  accounts, the full holder list (needed so the merged Record
+     *  Savings form can offer the same "which holder is depositing"
+     *  choice depositForm()'s own page already offers). */
+    public function memberAccountsForAdd(): void
+    {
+        Session::requireAuth();
+
+        $memberId = (int)($_GET['member_id'] ?? 0);
+        if ($memberId < 1) {
+            $this->json(['accounts' => []]);
+            return;
+        }
+
+        $holderModel  = new SavingsAccountHolderModel();
+        $accountModel = new MemberSavingsAccountModel();
+
+        $accounts = array_filter(
+            $holderModel->getMemberAccounts($memberId),
+            fn($a) => !in_array($a['account_type'], ['corporate', 'fixed_deposit'], true) && $a['status'] === 'active'
+        );
+
+        $out = array_map(function ($a) use ($holderModel, $accountModel) {
+            $row = [
+                'id'             => (int)$a['id'],
+                'account_number' => $a['account_number'],
+                'account_type'   => ucfirst($a['account_type']),
+                'balance'        => $accountModel->getAccountBalance((int)$a['id']),
+            ];
+            if ($a['account_type'] === 'joint') {
+                $row['holders'] = array_values(array_map(fn($h) => [
+                    'member_id'     => (int)$h['member_id'],
+                    'name'          => trim(($h['first_name'] ?? '') . ' ' . ($h['last_name'] ?? '')),
+                    'member_number' => $h['member_number'] ?? '',
+                    'role'          => $h['role'],
+                ], array_filter($holderModel->getAccountHolders((int)$a['id']), fn($h) => !empty($h['member_id']))));
+            }
+            return $row;
+        }, array_values($accounts));
+
+        $this->json(['accounts' => $out]);
+    }
+
+    // ----------------------------------------------------------------
+    // EDIT
+    // ----------------------------------------------------------------
+    public function edit(): void
+    {
+        Session::requireAuth();
+
+        // Stage 1 security remediation: amending a posted savings transaction
+        // is financially sensitive, matching the write tier already applied
+        // to Savings Accounts (admin/treasurer only) rather than the general
+        // record-a-deposit tier.
+        if (!Session::hasRole(['admin', 'treasurer'])) {
+            Session::flash('error', 'Access denied. Only admin or treasurer can edit a savings record.');
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+
+        $id     = (int)($_GET['id'] ?? 0);
+        $saving = $this->findOrAbort($id);
+
+        if ($this->isPost()) {
+            $this->handleSave($id, $saving);
+            return;
+        }
+
+        $old = Session::flash('form_old') ?? [];
+        if ($old) $saving = array_merge($saving, $old);
+
+        // Load the member for display
+        $member = $this->memberModel->find((int)$saving['member_id']);
+
+        $this->render('savings/form', [
+            'pageTitle'     => 'Edit Savings — ' . APP_NAME,
+            'breadcrumbs'   => [
+                ['label' => 'Savings', 'url' => APP_URL . '/index.php?page=savings'],
+                ['label' => htmlspecialchars($saving['receipt_number']),
+                 'url'   => APP_URL . '/index.php?page=savings-view&id=' . $id],
+                ['label' => 'Edit'],
+            ],
+            'formAction'    => APP_URL . '/index.php?page=savings-edit&id=' . $id,
+            'formMode'      => 'edit',
+            'saving'        => $saving,
+            'errors'        => Session::flash('form_errors') ?? [],
+            'receiptNumber' => $saving['receipt_number'],
+            'csrfToken'     => $this->getCsrf(),
+            'preselected'   => $member ?: null,
+        ], 'main');
+    }
+
+    // ----------------------------------------------------------------
+    // VIEW
+    // ----------------------------------------------------------------
+    public function view(): void
+    {
+        Session::requireAuth();
+
+        $id     = (int)($_GET['id'] ?? 0);
+        $saving = $this->model->findWithDetails($id);
+        if (!$saving) { $this->abort404(); }
+
+        $this->render('savings/view', [
+            'pageTitle'   => $saving['receipt_number'] . ' — ' . APP_NAME,
+            'breadcrumbs' => [
+                ['label' => 'Savings', 'url' => APP_URL . '/index.php?page=savings'],
+                ['label' => $saving['receipt_number']],
+            ],
+            'saving'    => $saving,
+            'success'   => Session::flash('success'),
+            'error'     => Session::flash('error'),
+            'csrfToken' => $this->getCsrf(),
+        ], 'main');
+    }
+
+    // ----------------------------------------------------------------
+    // DELETE
+    // ----------------------------------------------------------------
+    public function delete(): void
+    {
+        Session::requireAuth();
+
+        // Stage 9: deleting a savings row can orphan its journal entry
+        // (SavingsModel::delete() now reverses it) -- admin-only, matching
+        // the pattern already used for repayment deletion.
+        if (Session::get('user_role') !== 'admin') {
+            Session::flash('error', 'Only administrators can delete savings records.');
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+
+        // Stage 13-C (H-1): was GET-triggered with no CSRF check.
+        if (!$this->isPost()) {
+            Session::flash('error', 'Invalid request method.');
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+        if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
+            Session::flash('error', 'Security token mismatch. Please try again.');
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+
+        $id     = (int)($_POST['id'] ?? 0);
+        $saving = $this->model->findWithDetails($id);
+        if (!$saving) { $this->abort404(); }
+
+        $userId = (int)Session::get('user_id');
+        try {
+            $deleted = $this->model->delete($id, $userId);
+        } catch (Throwable $e) {
+            Session::flash('error', "Could not delete savings record {$saving['receipt_number']}: " . $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+
+        if ($deleted) {
+            $this->model->log(
+                $userId,
+                'savings_deleted',
+                "Deleted {$saving['receipt_number']} — Shs " . number_format($saving['amount'], 2) .
+                " for {$saving['member_number']}"
+            );
+            Session::flash('success', "Savings record {$saving['receipt_number']} deleted.");
+        } else {
+            Session::flash('error', 'Could not delete the savings record.');
+        }
+
+        // Redirect back to member view if requested
+        $returnTo = $_GET['return_to'] ?? '';
+        $returnId = (int)($_GET['return_id'] ?? 0);
+        if ($returnTo === 'member-view' && $returnId > 0) {
+            $this->redirect(APP_URL . '/index.php?page=member-view&id=' . $returnId);
+        } else {
+            $this->redirect(APP_URL . '/index.php?page=savings');
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // BULK DELETE
+    // ----------------------------------------------------------------
+    public function bulkDelete(): void
+    {
+        Session::requireAuth();
+
+        if (Session::get('user_role') !== 'admin') {
+            Session::flash('error', 'Only administrators can bulk delete records.');
+            $this->redirect(APP_URL . '/index.php?page=savings');
+            return;
+        }
+
+        $ids = $_POST['ids'] ?? [];
+        $memberId = (int)($_POST['member_id'] ?? 0);
+
+        if (empty($ids) || !is_array($ids)) {
+            Session::flash('error', 'No records selected.');
+            if ($memberId > 0) {
+                $this->redirect(APP_URL . '/index.php?page=member-view&id=' . $memberId);
+            } else {
+                $this->redirect(APP_URL . '/index.php?page=savings');
+            }
+            return;
+        }
+
+        $deleted = 0;
+        $skippedPosted = 0;
+        $totalAmount = 0;
+        $bulkUserId = (int)Session::get('user_id');
+        foreach ($ids as $id) {
+            $id = (int)$id;
+            $saving = $this->model->findWithDetails($id);
+            if ($saving) {
+                // Stage 13-F3: was previously calling delete($id) with no
+                // $userId at all (defaulting to 0), which -- for a posted
+                // row -- would have attributed its journal reversal to
+                // "user #0" instead of the real acting admin, undermining
+                // AUTH-D-02's maker/checker attribution for bulk deletes.
+                // Now also subject to SavingsModel::delete()'s posted-row
+                // immutability guard: a posted row throws instead of being
+                // silently skipped, so it's counted separately below rather
+                // than treated the same as "not found".
+                try {
+                    if ($this->model->delete($id, $bulkUserId)) {
+                        $totalAmount += (float)$saving['amount'];
+                        $deleted++;
+                    }
+                } catch (InvalidArgumentException $e) {
+                    $skippedPosted++;
+                }
+            }
+        }
+
+        if ($deleted > 0) {
+            $this->model->log(
+                $bulkUserId,
+                'savings_bulk_deleted',
+                "Bulk deleted {$deleted} savings records — Shs " . number_format($totalAmount, 2) .
+                ($skippedPosted > 0 ? " ({$skippedPosted} posted record" . ($skippedPosted > 1 ? 's' : '') . " skipped)" : '')
+            );
+            $msg = "Deleted {$deleted} savings record" . ($deleted > 1 ? 's' : '') .
+                " (Shs " . number_format($totalAmount, 0) . ").";
+            if ($skippedPosted > 0) {
+                $msg .= " {$skippedPosted} record" . ($skippedPosted > 1 ? 's were' : ' was') .
+                    " already posted to the ledger and could not be deleted — use the Controlled Corrections workflow to reverse " .
+                    ($skippedPosted > 1 ? 'them' : 'it') . " instead.";
+            }
+            Session::flash('success', $msg);
+        } elseif ($skippedPosted > 0) {
+            Session::flash('error', "None of the selected records could be deleted: all {$skippedPosted} " .
+                "selected record" . ($skippedPosted > 1 ? 's are' : ' is') . " already posted to the ledger. " .
+                "Use the Controlled Corrections workflow to reverse " . ($skippedPosted > 1 ? 'them' : 'it') . " instead.");
+        } else {
+            Session::flash('error', 'Could not delete the selected records.');
+        }
+
+        if ($memberId > 0) {
+            $this->redirect(APP_URL . '/index.php?page=member-view&id=' . $memberId);
+        } else {
+            $this->redirect(APP_URL . '/index.php?page=savings');
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // RECEIPT (printable)
+    // ----------------------------------------------------------------
+    public function receipt(): void
+    {
+        Session::requireAuth();
+
+        $id     = (int)($_GET['id'] ?? 0);
+        $saving = $this->model->findWithDetails($id);
+        if (!$saving) { $this->abort404(); }
+
+        // Log print action
+        $this->model->log(
+            (int)Session::get('user_id'),
+            'receipt_printed',
+            "Printed receipt {$saving['receipt_number']}"
+        );
+
+        // Render without layout (standalone print page)
+        $this->render('savings/receipt', ['saving' => $saving], null);
+    }
+
+    // ----------------------------------------------------------------
+    // MEMBER SAVINGS HISTORY (called from member profile)
+    // ----------------------------------------------------------------
+    public function memberSavings(): void
+    {
+        Session::requireAuth();
+
+        $memberId = (int)($_GET['member_id'] ?? 0);
+        $member   = $this->memberModel->find($memberId);
+        if (!$member) { $this->abort404(); }
+
+        $this->render('savings/member-savings', [
+            'pageTitle'   => 'Savings — ' . $member['first_name'] . ' ' . $member['last_name'],
+            'breadcrumbs' => [
+                ['label' => 'Members',  'url' => APP_URL . '/index.php?page=members'],
+                ['label' => $member['first_name'] . ' ' . $member['last_name'],
+                 'url'   => APP_URL . '/index.php?page=member-view&id=' . $memberId],
+                ['label' => 'Savings'],
+            ],
+            'member'      => $member,
+            'balance'     => $this->model->memberBalance($memberId),
+            'depositCount'=> $this->model->memberDepositCount($memberId),
+            'latest'      => $this->model->memberLatestDeposit($memberId),
+            'history'     => $this->model->memberHistory($memberId, 50),
+        ], 'main');
+    }
+
+    // ----------------------------------------------------------------
+    // REPORT
+    // ----------------------------------------------------------------
+    public function report(): void
+    {
+        Session::requireAuth();
+
+        $type     = trim($_GET['type']      ?? 'monthly');
+        $year     = trim($_GET['year']      ?? date('Y'));
+        $month    = trim($_GET['month']     ?? date('m'));
+        $dateFrom = trim($_GET['date_from'] ?? '');
+        $dateTo   = trim($_GET['date_to']   ?? '');
+
+        // Set date range based on type
+        if ($type === 'daily') {
+            $date     = trim($_GET['date'] ?? date('Y-m-d'));
+            $dateFrom = $date;
+            $dateTo   = $date;
+        } elseif ($type === 'weekly') {
+            $dateFrom = date('Y-m-d', strtotime('monday this week'));
+            $dateTo   = date('Y-m-d', strtotime('sunday this week'));
+        } elseif ($type === 'monthly') {
+            $dateFrom = date('Y-m-01', mktime(0,0,0,(int)$month,1,(int)$year));
+            $dateTo   = date('Y-m-t',  mktime(0,0,0,(int)$month,1,(int)$year));
+        } elseif ($type === 'annual') {
+            $dateFrom = "{$year}-01-01";
+            $dateTo   = "{$year}-12-31";
+        }
+
+        $result = $this->model->search('', $year, '', $dateFrom, $dateTo, '', 0, 1, 9999);
+
+        $this->render('savings/report', [
+            'pageTitle'   => 'Savings Report — ' . APP_NAME,
+            'breadcrumbs' => [
+                ['label' => 'Savings', 'url' => APP_URL . '/index.php?page=savings'],
+                ['label' => 'Report'],
+            ],
+            'savings'     => $result['rows'],
+            'totalAmount' => $result['filteredTotal'],
+            'type'        => $type,
+            'year'        => $year,
+            'month'       => $month,
+            'dateFrom'    => $dateFrom,
+            'dateTo'      => $dateTo,
+            'years'       => $this->model->getFinancialYears(),
+        ], 'main');
+    }
+
+    // ----------------------------------------------------------------
+    // AJAX: member search for the record-savings form
+    // ----------------------------------------------------------------
+    public function memberSearch(): void
+    {
+        Session::requireAuth();
+
+        $term = trim($_GET['q'] ?? '');
+        if (strlen($term) < 2) {
+            $this->json(['members' => []]);
+            return;
+        }
+
+        $result = $this->memberModel->search($term, 'active', '', '', 1, 10);
+        $out = array_map(fn($m) => [
+            'id'            => $m['id'],
+            'member_number' => $m['member_number'],
+            'full_name'     => $m['first_name'] . ' ' . $m['last_name'],
+            'phone'         => $m['phone'],
+        ], $result['rows']);
+
+        $this->json(['members' => $out]);
+    }
+
+    // ----------------------------------------------------------------
+    // SAVE HANDLER
+    // ----------------------------------------------------------------
+    private function handleSave(?int $id = null, array $existing = []): void
+    {
+        if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
+            Session::flash('error', 'Security token mismatch. Please try again.');
+            $this->redirectBack($id);
+            return;
+        }
+
+        $input  = $this->collectInput();
+        $errors = $this->validate($input, $id);
+
+        if ($errors) {
+            Session::flash('form_errors', $errors);
+            Session::flash('form_old',    $input);
+            $this->redirectBack($id);
+            return;
+        }
+
+        $userId = (int)Session::get('user_id');
+
+        if ($id === null) {
+            $input['receipt_number'] = $this->model->generateReceiptNumber();
+            $input['recorded_by']    = $userId;
+            $input['financial_year'] = date('Y', strtotime($input['transaction_date']));
+
+            try {
+                $posted = $this->model->recordDepositWithPosting($input, $userId);
+                $newId = $posted['id'];
+
+                $this->model->log($userId, 'savings_recorded',
+                    "Recorded {$input['receipt_number']} — Shs " . number_format($input['amount'],2) .
+                    " for member_id {$input['member_id']} — posted as {$posted['entry_number']}");
+                Session::flash('success', "Savings {$input['receipt_number']} recorded and posted as journal entry {$posted['entry_number']}.");
+                $this->redirect(APP_URL . '/index.php?page=savings-view&id=' . $newId);
+            } catch (Exception $e) {
+                Session::flash('error', 'Failed to save: ' . $e->getMessage());
+                Session::flash('form_old', $input);
+                $this->redirect(APP_URL . '/index.php?page=savings-add');
+            }
+        } else {
+            unset($input['receipt_number'], $input['recorded_by']);
+            $input['financial_year'] = date('Y', strtotime($input['transaction_date']));
+
+            if ($this->model->update($id, $input)) {
+                $this->model->log($userId, 'savings_updated',
+                    "Updated {$existing['receipt_number']} — Shs " . number_format($input['amount'],2));
+                Session::flash('success', 'Savings record updated successfully.');
+            } else {
+                Session::flash('error', 'No changes saved.');
+            }
+            $this->redirect(APP_URL . '/index.php?page=savings-view&id=' . $id);
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // INPUT + VALIDATION
+    // ----------------------------------------------------------------
+    private function collectInput(): array
+    {
+        $s = fn(string $k, string $d = '') => $this->sanitize($_POST[$k] ?? $d);
+        return [
+            'member_id'        => (int)($_POST['member_id'] ?? 0),
+            'amount'           => (float)($_POST['amount']  ?? 0),
+            'payment_method'   => $s('payment_method', 'Cash'),
+            'reference_number' => $s('reference_number') ?: null,
+            'transaction_date' => $s('transaction_date', date('Y-m-d')),
+            'notes'            => $s('notes') ?: null,
+        ];
+    }
+
+    private function validate(array $d, ?int $editId = null): array
+    {
+        $e = [];
+        if ($d['member_id'] < 1) {
+            $e['member_id'] = 'Please select a member.';
+        } elseif (!$this->memberModel->find($d['member_id'])) {
+            $e['member_id'] = 'Selected member does not exist.';
+        }
+        if ($d['amount'] <= 0) {
+            $e['amount'] = 'Amount must be greater than zero.';
+        }
+        if (!in_array($d['payment_method'],
+            ['Cash','Airtel Money','MTN Mobile Money','Bank Transfer','Cheque','Other'], true)) {
+            $e['payment_method'] = 'Please select a valid payment method.';
+        }
+        if (empty($d['transaction_date']) ||
+            !DateTime::createFromFormat('Y-m-d', $d['transaction_date'])) {
+            $e['transaction_date'] = 'Please enter a valid transaction date.';
+        }
+        return $e;
+    }
+
+    // ----------------------------------------------------------------
+    // CSRF
+    // ----------------------------------------------------------------
+    private function getCsrf(): string
+    {
+        if (!Session::has('csrf_token')) {
+            Session::set('csrf_token', bin2hex(random_bytes(32)));
+        }
+        return Session::get('csrf_token');
+    }
+
+    private function verifyCsrf(string $token): bool
+    {
+        $stored = Session::get('csrf_token', '');
+        Session::set('csrf_token', bin2hex(random_bytes(32)));
+        return hash_equals($stored, $token);
+    }
+
+    // ----------------------------------------------------------------
+    // HELPERS
+    // ----------------------------------------------------------------
+    private function findOrAbort(int $id): array
+    {
+        $row = $this->model->find($id);
+        if (!$row) { $this->abort404(); }
+        return $row;
+    }
+
+    private function abort404(): never
+    {
+        http_response_code(404);
+        require VIEW_PATH . '/errors/404.php';
+        exit;
+    }
+
+    private function redirectBack(?int $id): void
+    {
+        $this->redirect($id
+            ? APP_URL . '/index.php?page=savings-edit&id=' . $id
+            : APP_URL . '/index.php?page=savings-add'
+        );
+    }
+}
