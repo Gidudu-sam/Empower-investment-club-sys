@@ -646,9 +646,22 @@ class MemberSavingsAccountModel extends Model
             ];
         }
 
+        // Stage B/F: a Historical Balance Brought Forward
+        // (transaction_type='opening_balance') represents genuine
+        // accumulated savings and must count toward the qualifying
+        // AMOUNT -- but it is one consolidated historical figure, not
+        // evidence of two separate qualifying deposit EVENTS, so it must
+        // never inflate the deposit-count leg of this rule. Computed as
+        // two independently-filtered aggregates in one query rather than
+        // the previous single COUNT+SUM (which was scoped to
+        // transaction_type='deposit' only and would have silently
+        // excluded a B/F row from the amount entirely).
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) c, COALESCE(SUM(credit),0) t FROM `savings`
-             WHERE savings_account_id = ? AND transaction_type = 'deposit'"
+            "SELECT
+                COUNT(CASE WHEN transaction_type = 'deposit' THEN 1 END) AS c,
+                COALESCE(SUM(CASE WHEN transaction_type IN ('deposit', 'opening_balance') THEN credit ELSE 0 END), 0) AS t
+             FROM `savings`
+             WHERE savings_account_id = ? AND transaction_type IN ('deposit', 'opening_balance')"
         );
         $stmt->execute([$accountId]);
         $row = $stmt->fetch();

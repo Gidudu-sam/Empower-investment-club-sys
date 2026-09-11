@@ -172,7 +172,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #1a1a
                                 <td><?= htmlspecialchars($t['receipt_number'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars($t['cash_reference_number'] ?? '—') ?></td>
                                 <td><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $t['transaction_type']))) ?></td>
-                                <td><?= htmlspecialchars($t['description'] ?? '') ?></td>
+                                <td><?= htmlspecialchars($t['description'] ?? '') ?><?php if ($t['transaction_type'] === 'opening_balance' && !empty($t['notes'])): ?><br><span style="font-size:.62rem;color:#64748b;font-style:italic;"><?= htmlspecialchars($t['notes']) ?></span><?php endif; ?></td>
                                 <td class="text-right amount-debit"><?= (float)$t['debit'] > 0 ? number_format((float)$t['debit'], 2) : '—' ?></td>
                                 <td class="text-right amount-credit"><?= (float)$t['credit'] > 0 ? number_format((float)$t['credit'], 2) : '—' ?></td>
                                 <td class="text-right amount-balance"><?= number_format((float)($t['running_balance'] ?? 0), 2) ?></td>

@@ -174,7 +174,12 @@ foreach ($roles as $r) { if ($r['name'] === 'member') { $memberRoleId = (int)$r[
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Password <span id="pwdHint" class="text-muted fw-normal">(required for new users)</span></label>
-                        <input type="password" name="password" id="userPassword" class="form-control" minlength="6">
+                        <div class="input-group">
+                            <input type="password" name="password" id="userPassword" class="form-control" minlength="6">
+                            <button type="button" class="btn btn-outline-secondary" onclick="togglePasswordVisibility(this, 'userPassword')" tabindex="-1">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -201,7 +206,12 @@ foreach ($roles as $r) { if ($r['name'] === 'member') { $memberRoleId = (int)$r[
                     <p class="small text-muted mb-3">Reset password for: <strong id="resetUserName"></strong></p>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">New Password</label>
-                        <input type="password" name="new_password" class="form-control" minlength="6" required>
+                        <div class="input-group">
+                            <input type="password" name="new_password" id="resetNewPassword" class="form-control" minlength="6" required>
+                            <button type="button" class="btn btn-outline-secondary" onclick="togglePasswordVisibility(this, 'resetNewPassword')" tabindex="-1">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -217,6 +227,29 @@ foreach ($roles as $r) { if ($r['name'] === 'member') { $memberRoleId = (int)$r[
 const currentUserId = <?= (int)$currentUserId ?>;
 const memberRoleId  = <?= (int)$memberRoleId ?>;
 const base          = '<?= $base ?>';
+
+function togglePasswordVisibility(btn, inputId) {
+    const input = document.getElementById(inputId);
+    const icon = btn.querySelector('i');
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    icon.classList.toggle('bi-eye', showing);
+    icon.classList.toggle('bi-eye-slash', !showing);
+}
+
+// Re-hides a password field and resets its eye icon -- called whenever a
+// modal containing one is (re)opened, so a "shown" state from a previous
+// open never carries over to a different user's password field.
+function resetPasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    input.type = 'password';
+    const btn = input.nextElementSibling;
+    if (btn) {
+        const icon = btn.querySelector('i');
+        icon.classList.add('bi-eye');
+        icon.classList.remove('bi-eye-slash');
+    }
+}
 
 function toggleMemberLinkGroup() {
     const roleSelect = document.getElementById('userRole');
@@ -312,6 +345,7 @@ function resetForm() {
     document.getElementById('ownMemberLinkNote').style.display = 'none';
     document.getElementById('userPassword').value = '';
     document.getElementById('userPassword').required = true;
+    resetPasswordVisibility('userPassword');
     document.getElementById('userModalTitle').innerHTML = '<i class="bi bi-person-plus me-2"></i>Add User';
     document.getElementById('pwdHint').textContent = '(required for new users)';
     toggleMemberLinkGroup();
@@ -351,6 +385,7 @@ function editUser(user) {
 
     document.getElementById('userPassword').value = '';
     document.getElementById('userPassword').required = false;
+    resetPasswordVisibility('userPassword');
     document.getElementById('userModalTitle').innerHTML = '<i class="bi bi-pencil me-2"></i>Edit User';
     document.getElementById('pwdHint').textContent = '(leave blank to keep current)';
     new bootstrap.Modal(document.getElementById('userModal')).show();
@@ -359,6 +394,8 @@ function editUser(user) {
 function resetPassword(id, name) {
     document.getElementById('resetUserId').value = id;
     document.getElementById('resetUserName').textContent = name;
+    document.getElementById('resetNewPassword').value = '';
+    resetPasswordVisibility('resetNewPassword');
     new bootstrap.Modal(document.getElementById('resetModal')).show();
 }
 </script>

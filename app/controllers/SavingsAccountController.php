@@ -85,6 +85,22 @@ class SavingsAccountController extends Controller
         }
     }
 
+    /** Stage B/F: recording a Historical Balance Brought Forward is a
+     *  judgment call about historical fact, not a routine payment
+     *  collection -- deliberately narrower than requireDepositAccess()
+     *  (excludes cashier and office_admin), matching the existing
+     *  adjustment-style write gates elsewhere in this app (admin +
+     *  treasurer only). Approved for this stage: no maker-checker
+     *  approval step exists yet, so this same gate covers both entry and
+     *  reversal. */
+    private function requireBroughtForwardAccess(): void
+    {
+        if (!Session::hasRole(['admin', 'treasurer'])) {
+            http_response_code(403);
+            die('Access denied. Admin or Treasurer privileges required to record a Historical Balance Brought Forward.');
+        }
+    }
+
     /** Stage FD-2 — three narrow, separate gates (not one shared
      *  "savings management" check) so the maker-checker separation the
      *  stage requires is enforced by construction, not convention. The
@@ -571,6 +587,230 @@ class SavingsAccountController extends Controller
         }
     }
 
+    // ----------------------------------------------------------------
+    // Historical Balance Brought Forward (B/F)
+    //
+    // Subledger-only, per the approved design: no journal is ever
+    // created (SavingsModel::createBroughtForward() never calls
+    // postDeposit()/recordDepositWithPosting()). Scoped to compulsory
+    // and voluntary accounts only for this initial implementation --
+    // the same two individual-ownership account types the deposit/
+    // withdrawal workflow already treats as the "normal" case;
+    // corporate is already rejected unconditionally by
+    // resolveTransactionMember(), and joint/fixed_deposit are
+    // deliberately not offered here (not part of the approved scope,
+    // and a lump-sum Fixed Deposit's "opening balance" is its principal,
+    // recorded at account creation, not this feature).
+    // ----------------------------------------------------------------
+
+    public function bfForm(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $id = (int)($_GET['id'] ?? 0);
+        $loaded = $this->loadTransactableAccount($id);
+        if (!$loaded) {
+            http_response_code(404);
+            die('Savings account not found.');
+        }
+        $account = $loaded['account'];
+
+        if (!in_array($account['account_type'], ['compulsory', 'voluntary'], true)) {
+            Session::flash('error', 'Historical Balance Brought Forward is only available for Compulsory or Voluntary savings accounts.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $id);
+            return;
+        }
+        if ($account['status'] !== 'active') {
+            Session::flash('error', 'This account is not active.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $id);
+            return;
+        }
+
+        $savingsModel = new SavingsModel();
+        if ($savingsModel->hasBroughtForward($id)) {
+            Session::flash('error', 'This account already has a Historical Balance Brought Forward on record.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $id);
+            return;
+        }
+
+        $this->render('savings-accounts/bf-form', [
+            'pageTitle' => 'Balance Brought Forward — ' . $account['account_number'],
+            'account'   => $account,
+            'holders'   => $loaded['holders'],
+            'csrfToken' => $this->getCsrf(),
+        ]);
+    }
+
+    private function collectBroughtForwardInput(int $memberId, int $accountId): array
+    {
+        $amount = (float)($_POST['amount'] ?? 0);
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Amount must be greater than zero.');
+        }
+
+        $effectiveDate = trim($_POST['effective_date'] ?? '');
+        if ($effectiveDate === '' || !DateTime::createFromFormat('Y-m-d', $effectiveDate)) {
+            throw new InvalidArgumentException('Please enter a valid historical effective (as-of) date.');
+        }
+        if ($effectiveDate > date('Y-m-d')) {
+            throw new InvalidArgumentException('The effective date cannot be in the future.');
+        }
+
+        // Stage B/F period-date correction: the historical period is now
+        // captured as two structured dates (Period From / Period To)
+        // instead of a free-text textarea. This is a controller-only
+        // change -- SavingsModel::createBroughtForward() still just
+        // receives a plain 'notes' string exactly as before; only how
+        // that string is produced has changed, here.
+        $periodFrom = trim($_POST['period_from'] ?? '');
+        if ($periodFrom === '' || !DateTime::createFromFormat('Y-m-d', $periodFrom)) {
+            throw new InvalidArgumentException('Please enter a valid Period From date.');
+        }
+        $periodTo = trim($_POST['period_to'] ?? '');
+        if ($periodTo === '' || !DateTime::createFromFormat('Y-m-d', $periodTo)) {
+            throw new InvalidArgumentException('Please enter a valid Period To date.');
+        }
+        if ($periodFrom > $periodTo) {
+            throw new InvalidArgumentException('Period From cannot be later than Period To.');
+        }
+
+        $notes = sprintf(
+            'Historical savings accumulated from %s to %s, consolidated into this Balance Brought Forward entry.',
+            date('d F Y', strtotime($periodFrom)),
+            date('d F Y', strtotime($periodTo))
+        );
+
+        return [
+            'member_id'          => $memberId,
+            'savings_account_id' => $accountId,
+            'amount'             => $amount,
+            'transaction_date'   => $effectiveDate,
+            'notes'              => $notes,
+        ];
+    }
+
+    public function bfStore(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $id = (int)($_POST['account_id'] ?? 0);
+        if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
+            Session::flash('error', 'Security token mismatch. Please try again.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf&id=' . $id);
+            return;
+        }
+
+        try {
+            // resolveTransactionMember() derives the member from the
+            // account's own holder record -- it is never trusted from a
+            // posted member_id -- so an attempt to record a B/F for
+            // member A against member B's savings_account_id resolves to
+            // member B (the account's real owner) regardless of what, if
+            // anything, was submitted alongside it.
+            [$memberId, $account] = $this->resolveTransactionMember($id, 'brought forward');
+            if (!in_array($account['account_type'], ['compulsory', 'voluntary'], true)) {
+                throw new InvalidArgumentException('Historical Balance Brought Forward is only available for Compulsory or Voluntary savings accounts.');
+            }
+            $input = $this->collectBroughtForwardInput($memberId, $id);
+
+            $savingsModel = new SavingsModel();
+            $userId = (int)Session::get('user_id');
+            $result = $savingsModel->createBroughtForward($input, $userId);
+
+            $member = (new MemberModel())->find($memberId);
+            $memberLabel = $member ? trim($member['first_name'] . ' ' . $member['last_name']) : ('member #' . $memberId);
+            $enteredBy = Session::get('user_name') ?? ('user #' . $userId);
+
+            // Section 20's required confirmation content (member, account,
+            // amount, effective date, receipt/reference, entered by,
+            // journal status) as one flash message -- the account view
+            // page immediately below it also shows the same new ledger
+            // row with every one of these facts, so no separate
+            // confirmation page is introduced for this smallest-practical
+            // implementation.
+            Session::flash('success',
+                "Balance Brought Forward recorded — Member: {$memberLabel} — Account: {$account['account_number']} — " .
+                "Amount: Shs " . number_format($input['amount'], 2) . " — Effective: " . date('d M Y', strtotime($input['transaction_date'])) . " — " .
+                "Receipt: {$result['receipt_number']} — Entered by: {$enteredBy} — " .
+                "Journal status: No GL Journal — Historical Subledger Entry."
+            );
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $id);
+        } catch (PDOException $e) {
+            Session::flash('error', 'Could not record Balance Brought Forward: ' . $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf&id=' . $id);
+        } catch (Throwable $e) {
+            Session::flash('error', $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf&id=' . $id);
+        }
+    }
+
+    public function bfReverseForm(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $accountId = (int)($_GET['id'] ?? 0);
+        $loaded = $this->loadTransactableAccount($accountId);
+        if (!$loaded) {
+            http_response_code(404);
+            die('Savings account not found.');
+        }
+
+        $savingsModel = new SavingsModel();
+        if (!$savingsModel->hasBroughtForward($accountId)) {
+            Session::flash('error', 'This account has no active Historical Balance Brought Forward to reverse.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $accountId);
+            return;
+        }
+
+        $stmt = $this->db()->prepare(
+            "SELECT * FROM `savings` WHERE savings_account_id = ? AND transaction_type = 'opening_balance'
+             ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$accountId]);
+        $bfRow = $stmt->fetch();
+
+        $this->render('savings-accounts/bf-reverse-form', [
+            'pageTitle' => 'Reverse Balance Brought Forward — ' . $loaded['account']['account_number'],
+            'account'   => $loaded['account'],
+            'bfRow'     => $bfRow,
+            'csrfToken' => $this->getCsrf(),
+        ]);
+    }
+
+    public function bfReverseStore(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $accountId = (int)($_POST['account_id'] ?? 0);
+        $savingsId = (int)($_POST['savings_id'] ?? 0);
+        if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
+            Session::flash('error', 'Security token mismatch. Please try again.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-reverse&id=' . $accountId);
+            return;
+        }
+
+        try {
+            $account = $this->accountModel->getAccount($accountId);
+            if (!$account) {
+                throw new InvalidArgumentException('Savings account not found.');
+            }
+            $reason = trim($_POST['reason'] ?? '');
+
+            $savingsModel = new SavingsModel();
+            $row = $savingsModel->find($savingsId);
+            if (!$row || (int)$row['savings_account_id'] !== $accountId) {
+                throw new InvalidArgumentException('That Balance Brought Forward record does not belong to this account.');
+            }
+
+            $savingsModel->reverseBroughtForward($savingsId, (int)Session::get('user_id'), $reason);
+
+            Session::flash('success', 'The Historical Balance Brought Forward has been reversed. The original entry remains in the ledger for audit purposes.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $accountId);
+        } catch (PDOException $e) {
+            Session::flash('error', 'Could not reverse Balance Brought Forward: ' . $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-reverse&id=' . $accountId);
+        } catch (Throwable $e) {
+            Session::flash('error', $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-reverse&id=' . $accountId);
+        }
+    }
+
     public function withdrawalForm(): void
     {
         $this->requireTransactAccess();
@@ -837,11 +1077,6 @@ class SavingsAccountController extends Controller
             }
         }
 
-        $qualification = null;
-        if ($account['account_type'] === 'compulsory') {
-            $qualification = $this->accountModel->checkCompulsoryQualification($id);
-        }
-
         // Stage 5B: transacting is only offered when it is actually safe and
         // operational -- active status (the literal meaning of the status
         // field) and not a corporate account (no holder-authorization rule
@@ -880,7 +1115,6 @@ class SavingsAccountController extends Controller
             'holders'         => $holders,
             'organization'    => $organization,
             'representatives' => $representatives,
-            'qualification'   => $qualification,
             'balance'         => $this->accountModel->getAccountBalance($id),
             'totalDeposits'   => $this->accountModel->getTotalDeposits($id),
             'totalWithdrawals'=> $this->accountModel->getTotalWithdrawals($id),
@@ -890,6 +1124,9 @@ class SavingsAccountController extends Controller
             'canWrite'        => Session::hasRole(['admin', 'treasurer', 'cashier']),
             'canDeposit'      => Session::hasRole(['admin', 'treasurer', 'cashier', 'office_admin']),
             'canTransact'     => $canTransact,
+            'canBroughtForward' => Session::hasRole(['admin', 'treasurer']),
+            'hasBroughtForward' => in_array($account['account_type'], ['compulsory', 'voluntary'], true)
+                ? (new SavingsModel())->hasBroughtForward($id) : false,
             'fdClosureRequest'=> $fdClosureRequest,
             'closureRequest'     => $closureRequest,
             'closureEligibility' => $closureEligibility,

@@ -49,6 +49,8 @@ $routes = [
     // Member Import
     'member-import'          => ['MemberImportController', 'index'],
     'member-import-preview'  => ['MemberImportController', 'preview'],
+    'member-import-parse'    => ['MemberImportController', 'parse'],
+    'member-import-validate' => ['MemberImportController', 'validateMapped'],
     'member-import-process'  => ['MemberImportController', 'process'],
     'member-import-template' => ['MemberImportController', 'template'],
     'member-import-template-download' => ['MemberImportController', 'templateDirect'],
@@ -143,6 +145,11 @@ $routes = [
     'savings-account-deposit-store'     => ['SavingsAccountController', 'depositStore'],
     'savings-account-withdrawal'        => ['SavingsAccountController', 'withdrawalForm'],
     'savings-account-withdrawal-store'  => ['SavingsAccountController', 'withdrawalStore'],
+    // Historical Balance Brought Forward (Stage B/F)
+    'savings-account-bf'                => ['SavingsAccountController', 'bfForm'],
+    'savings-account-bf-store'          => ['SavingsAccountController', 'bfStore'],
+    'savings-account-bf-reverse'        => ['SavingsAccountController', 'bfReverseForm'],
+    'savings-account-bf-reverse-store'  => ['SavingsAccountController', 'bfReverseStore'],
     // Reports module
     'reports'                => ['ReportController',     'index'],
     'report-members'         => ['ReportController',     'members'],

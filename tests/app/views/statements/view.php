@@ -448,7 +448,7 @@ function shareStatementWhatsApp() {
                     <?php foreach ($transactions as $tx): ?>
                     <tr>
                         <td class="text-center"><?= date('d-M-Y', strtotime($tx['date'])) ?></td>
-                        <td><?= htmlspecialchars($tx['description']) ?></td>
+                        <td><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:.68rem;color:#64748b;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
                         <td><?= htmlspecialchars($tx['reference']) ?></td>
                         <td class="text-right <?= $tx['debit'] > 0 ? 'amount-debit' : 'text-muted' ?>" style="<?= $tx['debit'] == 0 ? 'color:#94a3af;' : '' ?>">
                             <?= $tx['debit'] > 0 ? number_format($tx['debit'], 2) : '—' ?>

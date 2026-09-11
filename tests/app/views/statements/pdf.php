@@ -151,7 +151,7 @@ $logoSrc  = is_file($logoPath) ? 'data:image/png;base64,' . base64_encode(file_g
             <?php else: foreach ($transactions as $tx): ?>
             <tr>
                 <td style="border:1px solid #e2e8f0;"><?= date('d-M-Y', strtotime($tx['date'])) ?></td>
-                <td style="border:1px solid #e2e8f0;"><?= htmlspecialchars($tx['description']) ?></td>
+                <td style="border:1px solid #e2e8f0;"><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:10px;color:#64748b;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
                 <td style="border:1px solid #e2e8f0;text-align:right;<?= $tx['debit'] > 0 ? 'color:#dc2626;' : 'color:#94a3af;' ?>"><?= $tx['debit'] > 0 ? number_format($tx['debit'], 2) : '—' ?></td>
                 <td style="border:1px solid #e2e8f0;text-align:right;<?= $tx['credit'] > 0 ? 'color:#16a34a;' : 'color:#94a3af;' ?>"><?= $tx['credit'] > 0 ? number_format($tx['credit'], 2) : '—' ?></td>
                 <td style="border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#1e3a8a;"><?= number_format($tx['balance'], 2) ?></td>

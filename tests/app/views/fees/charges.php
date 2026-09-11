@@ -32,6 +32,12 @@ $canManageFeeTypes = Session::hasRole(['admin']);
     <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
 </div>
 <?php endif; ?>
+<?php if (!empty($error)): ?>
+<div class="alert alert-danger alert-dismissible fade show d-flex align-items-center gap-2 mb-3">
+    <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><div><?= htmlspecialchars($error) ?></div>
+    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
 
 <!-- Filters -->
 <div class="card mb-4">
@@ -85,12 +91,13 @@ $canManageFeeTypes = Session::hasRole(['admin']);
                     <th class="text-center">Status</th>
                     <th>Charged</th>
                     <th>Paid</th>
+                    <th>Payment</th>
                     <th class="text-center">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($charges)): ?>
-                <tr><td colspan="8" class="text-center py-4 text-muted">No charges found.</td></tr>
+                <tr><td colspan="9" class="text-center py-4 text-muted">No charges found.</td></tr>
                 <?php else: foreach ($charges as $c): ?>
                 <tr>
                     <td class="ps-3 fw-semibold" style="font-size:.72rem;"><?= htmlspecialchars($c['reference_number'] ?? '—') ?></td>
@@ -108,6 +115,16 @@ $canManageFeeTypes = Session::hasRole(['admin']);
                     </td>
                     <td class="text-muted" style="font-size:.72rem;"><?= date('d M Y', strtotime($c['charged_date'])) ?></td>
                     <td class="text-muted" style="font-size:.72rem;"><?= $c['paid_date'] ? date('d M Y', strtotime($c['paid_date'])) : '—' ?></td>
+                    <td style="font-size:.7rem;">
+                        <?php if (!empty($c['payment_method'])): ?>
+                            <?= htmlspecialchars($c['payment_method']) ?><?= !empty($c['cash_reference_number']) ? ' · ' . htmlspecialchars($c['cash_reference_number']) : '' ?>
+                            <?php if (!empty($c['external_reference'])): ?>
+                            <br><span class="text-muted">Ref: <?= htmlspecialchars($c['external_reference']) ?></span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="text-muted">—</span>
+                        <?php endif; ?>
+                    </td>
                     <td class="text-center">
                         <?php if ($c['status'] === 'pending' && ($canCollectFee || $canWaiveFee)): ?>
                         <div class="btn-group btn-group-sm">
@@ -171,6 +188,9 @@ $canManageFeeTypes = Session::hasRole(['admin']);
                         <option value="Cheque">Cheque</option>
                         <option value="Other">Other</option>
                     </select>
+                    <label class="form-label mt-2" style="font-size:.78rem;">External Payment Reference</label>
+                    <input type="text" name="external_reference" class="form-control form-control-sm" maxlength="100">
+                    <div class="form-text" style="font-size:.7rem;">Optional — enter the reference provided by the bank, mobile-money provider, cheque, or other external payment channel.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -185,6 +205,7 @@ $canManageFeeTypes = Session::hasRole(['admin']);
 function openMarkPaidModal(id, ref) {
     document.getElementById('markPaidId').value = id;
     document.getElementById('markPaidRef').textContent = ref;
+    document.querySelector('#markPaidModal [name="external_reference"]').value = '';
     var modal = new bootstrap.Modal(document.getElementById('markPaidModal'));
     modal.show();
 }

@@ -182,24 +182,42 @@ class StatementModel extends Model
             // output is byte-identical to before for every pre-existing row.
             $stmt = $this->db->prepare(
                 "SELECT transaction_date AS tx_date, COALESCE(debit,0) AS debit_amt, COALESCE(credit,0) AS credit_amt,
-                        payment_method, receipt_number, transaction_type
+                        payment_method, receipt_number, transaction_type, notes
                  FROM `savings`
                  WHERE member_id = ? AND transaction_date BETWEEN ? AND ?"
             );
             $stmt->execute([$memberId, $startDate, $endDate]);
             while ($row = $stmt->fetch()) {
-                $isAdjustment = $row['transaction_type'] === 'adjustment';
-                $isDebitRow   = (float)$row['debit_amt'] > 0;
+                $isAdjustment     = $row['transaction_type'] === 'adjustment';
+                // Stage B/F: a Historical Balance Brought Forward must
+                // never read as an ordinary deposit on a statement (the
+                // whole point of the feature is that it is NOT a deposit
+                // received today) -- distinguished the same way
+                // 'adjustment' already is, one more branch, no other
+                // change to this method's shape.
+                $isBroughtForward = $row['transaction_type'] === 'opening_balance';
+                $isDebitRow       = (float)$row['debit_amt'] > 0;
+                $description = 'Savings Deposit (' . $row['payment_method'] . ')';
+                if ($isAdjustment) {
+                    $description = 'Account Adjustment (' . ($isDebitRow ? 'Debit' : 'Credit') . ')';
+                } elseif ($isBroughtForward) {
+                    $description = $isDebitRow ? 'Balance Brought Forward (Reversal)' : 'Balance Brought Forward';
+                }
                 $txs[] = [
                     'date'        => $row['tx_date'],
-                    'description' => $isAdjustment
-                        ? ('Account Adjustment (' . ($isDebitRow ? 'Debit' : 'Credit') . ')')
-                        : 'Savings Deposit (' . $row['payment_method'] . ')',
+                    'description' => $description,
                     'reference'   => $row['receipt_number'] ?: '—',
                     'debit'       => $isDebitRow ? (float)$row['debit_amt'] : 0.0,
                     'credit'      => $isDebitRow ? 0.0 : (float)$row['credit_amt'],
                     'timestamp'   => strtotime($row['tx_date']),
-                    'type'        => $isAdjustment ? 'adjustment' : 'savings',
+                    'type'        => $isAdjustment ? 'adjustment' : ($isBroughtForward ? 'opening_balance' : 'savings'),
+                    // Stage B/F statement display remediation: the historical-
+                    // period sentence is only ever meaningful for a B/F row --
+                    // gated here, at the single shared data source every
+                    // statement surface reads from, so no view template needs
+                    // its own transaction_type check to avoid showing notes on
+                    // an ordinary deposit/withdrawal/adjustment.
+                    'notes'       => ($isBroughtForward && !empty($row['notes'])) ? $row['notes'] : null,
                 ];
             }
 
@@ -219,6 +237,7 @@ class StatementModel extends Model
                     'credit'      => 0.0,
                     'timestamp'   => strtotime($row['tx_date']),
                     'type'        => 'withdrawal',
+                    'notes'       => null,
                 ];
             }
         } catch (PDOException $e) {}

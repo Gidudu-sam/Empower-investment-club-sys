@@ -22,6 +22,58 @@ $cls     = fn(string $k) => isset($errors[$k]) ? ' is-invalid' : '';
     </a>
 </div>
 
+<?php if (!$isEdit && !empty($success)): ?>
+<div class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mb-3">
+    <i class="bi bi-check-circle-fill flex-shrink-0"></i><div><?= htmlspecialchars($success) ?></div>
+    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
+<?php if (!$isEdit && !empty($error)): ?>
+<div class="alert alert-danger alert-dismissible fade show d-flex align-items-center gap-2 mb-3">
+    <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><div><?= htmlspecialchars($error) ?></div>
+    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
+
+<?php if (!$isEdit && !empty($importResult)): $ir = $importResult; ?>
+<div class="card mb-4" style="border-color:var(--green);">
+    <div class="card-header" style="background:var(--green-soft);">
+        <h6 class="mb-0 fw-semibold" style="color:var(--green);"><i class="bi bi-check-circle-fill me-2"></i>Import Report</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-3 text-center"><div class="fw-bold fs-4"><?= (int)$ir['total'] ?></div><div class="small text-muted">Total</div></div>
+            <div class="col-3 text-center"><div class="fw-bold fs-4" style="color:var(--green);"><?= (int)$ir['imported'] ?></div><div class="small text-muted">Imported</div></div>
+            <div class="col-3 text-center"><div class="fw-bold fs-4" style="color:var(--gold);"><?= (int)$ir['skipped'] ?></div><div class="small text-muted">Skipped</div></div>
+            <div class="col-3 text-center"><div class="fw-bold fs-4" style="color:var(--rust);"><?= (int)$ir['errors'] ?></div><div class="small text-muted">Errors</div></div>
+        </div>
+        <?php if (!empty($ir['log'])): ?>
+        <details><summary class="small fw-semibold" style="cursor:pointer;">View Log</summary><div class="mt-2" style="max-height:200px;overflow-y:auto;">
+            <?php foreach ($ir['log'] as $e): ?>
+            <div class="small py-1 border-bottom"><span class="badge <?= $e['status']==='imported'?'bg-success-subtle text-success':($e['status']==='skipped'?'bg-warning-subtle text-warning':'bg-danger-subtle text-danger') ?>"><?= ucfirst($e['status']) ?></span> Row <?= (int)$e['row'] ?>: <?= htmlspecialchars($e['message']) ?></div>
+            <?php endforeach; ?>
+        </div></details>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!$isEdit): ?>
+<ul class="nav nav-pills mb-4" id="memberModeTabs">
+    <li class="nav-item">
+        <button type="button" class="nav-link active" id="tabSingleBtn" onclick="showMemberMode('single')">
+            <i class="bi bi-person-plus-fill me-1"></i>Add Single Member
+        </button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link" id="tabBulkBtn" onclick="showMemberMode('bulk')">
+            <i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Import from Spreadsheet
+        </button>
+    </li>
+</ul>
+<?php endif; ?>
+
+<div id="singleAddPanel">
 <form id="memberForm" action="<?= $formAction ?>" method="POST" novalidate>
 
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
@@ -384,6 +436,32 @@ $cls     = fn(string $k) => isset($errors[$k]) ? ' is-invalid' : '';
     </div>
 
 </form>
+</div>
+
+<?php if (!$isEdit): ?>
+<?php include __DIR__ . '/import-panel.php'; ?>
+<?php endif; ?>
+
+<script>
+function showMemberMode(mode) {
+    const single = document.getElementById('singleAddPanel');
+    const bulk   = document.getElementById('bulkImportPanel');
+    const tabSingle = document.getElementById('tabSingleBtn');
+    const tabBulk   = document.getElementById('tabBulkBtn');
+    if (!single) return;
+    if (mode === 'bulk') {
+        single.style.display = 'none';
+        if (bulk) bulk.style.display = '';
+        tabSingle.classList.remove('active');
+        tabBulk.classList.add('active');
+    } else {
+        single.style.display = '';
+        if (bulk) bulk.style.display = 'none';
+        tabBulk.classList.remove('active');
+        tabSingle.classList.add('active');
+    }
+}
+</script>
 
 <script>
 (function () {

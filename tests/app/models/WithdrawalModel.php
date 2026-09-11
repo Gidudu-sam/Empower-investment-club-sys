@@ -555,12 +555,21 @@ class WithdrawalModel extends Model
         } catch (PDOException $e) { return 0; }
     }
 
+    /**
+     * Total share capital -- this is the actual source the Dashboard's
+     * "Total Shares" card and the Withdrawals page's "Total Retained
+     * Shares" card both read. Was summing only `withdrawals.retained_amount`,
+     * the same gap Stage 4-A already fixed for the Reports > Shares page
+     * (ReportModel::getShareReport()) and the Dashboard's OWN separate
+     * ReportModel::getDashboardStats()['total_shares'] -- but this is the
+     * method those two dashboard cards actually call, which neither of
+     * those earlier fixes touched. Reuses the same proven
+     * ShareModel::totalShareCapital() merge (withdrawals + share_transactions).
+     */
     public function totalRetained(): float
     {
         try {
-            return (float)$this->db->query(
-                "SELECT COALESCE(SUM(retained_amount),0) FROM `withdrawals`"
-            )->fetchColumn();
+            return (new ShareModel())->totalShareCapital();
         } catch (PDOException $e) { return 0; }
     }
 

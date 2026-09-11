@@ -85,7 +85,7 @@
                 <?php else: foreach ($savings as $t): ?>
                 <tr>
                     <td class="small"><?= date('d M Y', strtotime($t['transaction_date'])) ?></td>
-                    <td class="small text-capitalize"><?= htmlspecialchars(str_replace('_',' ',$t['transaction_type'])) ?></td>
+                    <td class="small text-capitalize"><?= htmlspecialchars(str_replace('_',' ',$t['transaction_type'])) ?><?php if ($t['transaction_type'] === 'opening_balance' && !empty($t['notes'])): ?><br><span class="text-muted fst-italic" style="font-size:.68rem;"><?= htmlspecialchars($t['notes']) ?></span><?php endif; ?></td>
                     <td class="text-end small">Shs <?= number_format((float)$t['amount'], 2) ?></td>
                     <td class="text-end small">Shs <?= number_format((float)($t['running_balance'] ?? 0), 2) ?></td>
                 </tr>

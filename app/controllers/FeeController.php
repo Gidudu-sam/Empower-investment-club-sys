@@ -233,6 +233,7 @@ class FeeController extends Controller
             'feeId'        => $feeId,
             'fees'         => $fees,
             'success'      => Session::flash('success'),
+            'error'        => Session::flash('error'),
             'csrfToken'    => $this->getCsrf(),
         ]);
     }
@@ -249,6 +250,12 @@ class FeeController extends Controller
 
         $id = (int)($_POST['id'] ?? 0);
         $paymentMethod = $_POST['payment_method'] ?? '';
+        // Stage D (approved Stage C, G1): optional, staff-supplied external
+        // payment reference -- trimmed here, further normalized (empty ->
+        // null) inside FeeModel::markPaid(). Never trusted for anything
+        // beyond storage: it plays no role in fee/member/amount/status
+        // validation, account resolution, or the journal payload.
+        $externalReference = trim($_POST['external_reference'] ?? '');
 
         if ($id <= 0) {
             Session::flash('error', 'Invalid fee charge.');
@@ -258,7 +265,7 @@ class FeeController extends Controller
 
         try {
             $userId = (int)Session::get('user_id');
-            $posted = $this->model->markPaid($id, $paymentMethod, $userId);
+            $posted = $this->model->markPaid($id, $paymentMethod, $userId, $externalReference);
             $this->model->log($userId, 'fee_paid', "Marked fee charge #{$id} as paid via {$paymentMethod} — journal entry {$posted['entry_number']}");
             $successMessage = "Fee marked as paid and posted as journal entry {$posted['entry_number']}.";
             if (!empty($posted['cash_reference_number'])) {
@@ -312,11 +319,31 @@ class FeeController extends Controller
             return;
         }
 
+        // Optional: if a payment method is chosen right here, charge and
+        // mark paid in one action (the common "member is paying now" case).
+        // Left blank, this is unchanged from before -- a charge-only,
+        // pay-later action, still finished via the existing "Mark Paid"
+        // button on the Charge Ledger.
+        $paymentMethod = trim($_POST['payment_method'] ?? '');
+        $externalReference = trim($_POST['external_reference'] ?? '');
+
         try {
             $userId = (int)Session::get('user_id');
-            $this->model->manualCharge($memberId, $feeId, $userId);
-            $this->model->log($userId, 'fee_charged', "Manually charged fee ID {$feeId} to member ID {$memberId}");
-            Session::flash('success', 'Fee charged to member. It now appears in the Charge Ledger as pending.');
+
+            if ($paymentMethod !== '') {
+                $posted = $this->model->chargeAndMarkPaid($memberId, $feeId, $userId, $paymentMethod, $externalReference);
+                $this->model->log($userId, 'fee_charged', "Manually charged fee ID {$feeId} to member ID {$memberId}");
+                $this->model->log($userId, 'fee_paid', "Marked fee charge #{$posted['member_fee_id']} as paid via {$paymentMethod} — journal entry {$posted['entry_number']}");
+                $successMessage = "Fee charged and marked as paid, posted as journal entry {$posted['entry_number']}.";
+                if (!empty($posted['cash_reference_number'])) {
+                    $successMessage .= " Cash Reference: {$posted['cash_reference_number']}.";
+                }
+                Session::flash('success', $successMessage);
+            } else {
+                $this->model->manualCharge($memberId, $feeId, $userId);
+                $this->model->log($userId, 'fee_charged', "Manually charged fee ID {$feeId} to member ID {$memberId}");
+                Session::flash('success', 'Fee charged to member. It now appears in the Charge Ledger as pending.');
+            }
             $this->redirect(APP_URL . '/index.php?page=fee-charges');
         } catch (Throwable $e) {
             Session::flash('error', $e->getMessage());

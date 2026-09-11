@@ -98,6 +98,18 @@ class MemberController extends Controller
         ], 'main');
     }
 
+    /** Smart Import: MemberImportController::process() stores the post-
+     *  commit report via Session::set() (plain, not flash-backed) --
+     *  same convention the original member-import page always used. Read
+     *  it the same way here so the report survives exactly one page load
+     *  after a bulk import lands back on this page. */
+    private function consumeImportResult(): ?array
+    {
+        $result = Session::get('member_import_result');
+        if ($result) Session::remove('member_import_result');
+        return $result;
+    }
+
     // ----------------------------------------------------------------
     // ADD
     // ----------------------------------------------------------------
@@ -123,6 +135,14 @@ class MemberController extends Controller
             'memberNumber'      => $this->model->generateMemberNumber(),
             'nextAccountNumber' => $this->model->generateAccountNumber(),
             'csrfToken'         => $this->getCsrf(),
+            // Smart Import: bulk-import success/error and the post-commit
+            // report are flashed by MemberImportController::process() and
+            // land here now that the import panel lives on this page --
+            // previously only the (unlinked) member-import page ever read
+            // these.
+            'success'           => Session::flash('success'),
+            'error'             => Session::flash('error'),
+            'importResult'      => $this->consumeImportResult(),
         ], 'main');
     }
 
@@ -420,8 +440,11 @@ class MemberController extends Controller
 
         return [
             'account_number'      => $accountNumber ?: null,
-            'first_name'          => $s('first_name'),
-            'last_name'           => $s('last_name'),
+            // Uppercased for display uniformity across the members list --
+            // the club's spreadsheets mix Title Case and ALL CAPS entry by
+            // entry, which read as inconsistent side by side.
+            'first_name'          => strtoupper($s('first_name')),
+            'last_name'           => strtoupper($s('last_name')),
             'gender'              => $s('gender'),
             'date_of_birth'       => $s('date_of_birth') ?: null,
             'phone'               => $s('phone'),

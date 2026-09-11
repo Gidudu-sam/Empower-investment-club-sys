@@ -355,6 +355,48 @@ class FeeModel extends Model
         return $id;
     }
 
+    /**
+     * Charge a fee and immediately mark it paid, as one atomic operation --
+     * for the common front-desk case where a member pays a fee (e.g. Annual
+     * Subscription) on the spot, rather than being billed now and paying
+     * later. Reuses manualCharge() and markPaid() completely unchanged
+     * (same duplicate-fee rules, same account resolution, same
+     * JournalService::post() posting, same double-payment guard) -- this
+     * method only adds the transaction wrapper around both calls, mirroring
+     * the same create-then-post pattern SavingsModel::
+     * recordDepositWithPosting() already uses for deposits. If the charge
+     * succeeds but the payment step then fails for any reason (inactive
+     * account, closed accounting period, invalid payment method), the
+     * whole operation rolls back -- no orphaned pending charge is left
+     * behind. The separate manual "charge only" path (manualCharge()
+     * alone, no payment method) and the separate "Mark Paid" action on an
+     * already-existing pending charge are both untouched by this method.
+     *
+     * @return array{member_fee_id:int, journal_entry_id:int, entry_number:string, created:bool, cash_reference_number:?string}
+     */
+    public function chargeAndMarkPaid(int $memberId, int $feeId, int $userId, string $paymentMethod, ?string $externalReference = null): array
+    {
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $memberFeeId = $this->manualCharge($memberId, $feeId, $userId);
+            $posted = $this->markPaid($memberFeeId, $paymentMethod, $userId, $externalReference);
+
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
+        } catch (Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+
+        return array_merge(['member_fee_id' => $memberFeeId], $posted);
+    }
+
     // ================================================================
     // PAYMENT & STATUS
     // ================================================================
@@ -374,8 +416,26 @@ class FeeModel extends Model
      * @throws InvalidArgumentException if the charge doesn't exist, isn't
      *         pending, or the payment method is invalid.
      */
-    public function markPaid(int $memberFeeId, string $paymentMethod, int $userId): array
+    /**
+     * Stage D (approved Stage C, G1): $externalReference is an optional,
+     * staff-supplied payment-provider reference (a mobile-money code, a
+     * bank deposit slip number, a cheque number, ...) -- entirely
+     * separate from $charge['reference_number'] (the permanent,
+     * system-generated FEE-###### charge/obligation reference, never
+     * touched here) and from the CHR-/CHA- cash_reference_number
+     * generated below (also untouched). Trimmed to a plain string or
+     * NULL; never validated against any format, since it is an external
+     * party's reference, not one this system generates or controls.
+     * Stored only in the same UPDATE that flips status to 'paid' --
+     * never written for a rejected/pending charge.
+     */
+    public function markPaid(int $memberFeeId, string $paymentMethod, int $userId, ?string $externalReference = null): array
     {
+        $externalReference = $externalReference !== null ? trim($externalReference) : null;
+        if ($externalReference === '') {
+            $externalReference = null;
+        }
+
         if (!array_key_exists($paymentMethod, self::PAYMENT_ACCOUNTS)) {
             throw new InvalidArgumentException("Invalid payment method \"{$paymentMethod}\".");
         }
@@ -463,8 +523,8 @@ class FeeModel extends Model
             }
 
             $this->db->prepare(
-                "UPDATE `member_fees` SET `status`='paid', `paid_date`=?, `payment_method`=?, `cash_reference_number`=?, `journal_entry_id`=? WHERE `id`=?"
-            )->execute([$paidDate, $paymentMethod, $cashReferenceNumber, $result['id'], $memberFeeId]);
+                "UPDATE `member_fees` SET `status`='paid', `paid_date`=?, `payment_method`=?, `cash_reference_number`=?, `external_reference`=?, `journal_entry_id`=? WHERE `id`=?"
+            )->execute([$paidDate, $paymentMethod, $cashReferenceNumber, $externalReference, $result['id'], $memberFeeId]);
 
             if ($ownTransaction) {
                 $this->db->commit();
@@ -553,7 +613,7 @@ class FeeModel extends Model
 
             $listStmt = $this->db->prepare(
                 "SELECT mf.*, m.first_name, m.last_name, m.member_number, f.fee_name, f.fee_type, f.frequency
-                 {$from} ORDER BY mf.charged_date DESC LIMIT ? OFFSET ?"
+                 {$from} ORDER BY mf.charged_date DESC, mf.id DESC LIMIT ? OFFSET ?"
             );
             $i = 1;
             foreach ($params as $v) { $listStmt->bindValue($i++, $v); }

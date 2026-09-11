@@ -24,6 +24,7 @@ $typeLabels = [
 ];
 $isCorporate = $account['account_type'] === 'corporate';
 $isFixedDeposit = $account['account_type'] === 'fixed_deposit';
+$isBfEligible = in_array($account['account_type'], ['compulsory', 'voluntary'], true);
 
 // ── Authoritative totals — passed directly from controller ────────
 // These are computed from the full savings table, not from the
@@ -423,38 +424,10 @@ $title     = htmlspecialchars($account['account_number']);
         </div>
     </div>
 
-    <!-- Qualification (compulsory) OR Quick Actions (voluntary/joint) -->
+    <!-- Quick Actions -->
     <div class="col-md-6">
         <div class="card h-100">
-            <?php if ($account['account_type'] === 'compulsory' && $qualification): ?>
-                <div class="card-header"><h6 class="mb-0 fw-semibold"><i class="bi bi-check2-circle me-2"></i>Loan Qualification</h6></div>
-                <div class="card-body">
-                    <?php if ($qualification['qualified']): ?>
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Qualified</span>
-                        </div>
-                        <?php if ($qualification['qualification_met_date']): ?>
-                            <div class="text-muted small">Since <?= date('d M Y', strtotime($qualification['qualification_met_date'])) ?></div>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <?php
-                        $dCount  = (int)$qualification['deposit_count'];
-                        $dTotal  = (float)$qualification['deposit_total'];
-                        $target  = 40000;
-                        $pct     = min(100, round(($dTotal / $target) * 100));
-                        ?>
-                        <span class="badge bg-warning text-dark mb-3"><i class="bi bi-clock me-1"></i>Not Yet Qualified</span>
-                        <div class="bg-light rounded-3 p-3 mt-1">
-                            <div class="detail-label mb-2">Progress toward qualification</div>
-                            <div class="small mb-2"><?= $dCount ?> deposit<?= $dCount !== 1 ? 's' : '' ?> · Shs <?= number_format($dTotal, 0) ?> of Shs <?= number_format($target, 0) ?></div>
-                            <div class="progress" style="height:6px;border-radius:99px;">
-                                <div class="progress-bar bg-primary" style="width:<?= $pct ?>%"></div>
-                            </div>
-                            <div class="text-muted mt-2" style="font-size:.75rem;">Minimum 2 deposits required</div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            <?php elseif ($canWrite || $canDeposit): ?>
+            <?php if ($canWrite || $canDeposit): ?>
                 <div class="card-header"><h6 class="mb-0 fw-semibold"><i class="bi bi-lightning me-2"></i>Quick Actions</h6></div>
                 <div class="card-body d-flex flex-column gap-2">
                     <?php if ($canTransact): ?>
@@ -471,6 +444,17 @@ $title     = htmlspecialchars($account['account_number']);
                         </a>
                         <?php elseif ($isFixedDeposit): ?>
                         <div class="text-muted small"><i class="bi bi-lock-fill me-1"></i>Withdrawal not permitted before maturity (<?= $account['maturity_date'] ? date('d M Y', strtotime($account['maturity_date'])) : '—' ?>)</div>
+                        <?php endif; ?>
+                        <?php if ($canBroughtForward && $isBfEligible): ?>
+                            <?php if ($hasBroughtForward): ?>
+                            <a href="<?= $base ?>?page=savings-account-bf-reverse&id=<?= $account['id'] ?>" class="btn btn-outline-danger btn-sm mt-1">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>Reverse Balance Brought Forward
+                            </a>
+                            <?php else: ?>
+                            <a href="<?= $base ?>?page=savings-account-bf&id=<?= $account['id'] ?>" class="btn btn-outline-primary btn-sm mt-1">
+                                <i class="bi bi-clock-history me-1"></i>Record Balance Brought Forward
+                            </a>
+                            <?php endif; ?>
                         <?php endif; ?>
                     <?php else: ?>
                         <div class="text-muted small py-1">Transactions are unavailable while this account is <?= htmlspecialchars($account['status']) ?>.</div>

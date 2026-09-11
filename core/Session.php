@@ -47,11 +47,20 @@ class Session
         return $_SESSION[$key] ?? $default;
     }
 
-    /** Check whether a session key exists */
+    /** Check whether a session key exists -- including a pending flash
+     *  message under that key. flash() stores its value at
+     *  $_SESSION['_flash'][$key], not $_SESSION[$key], so a plain
+     *  isset($_SESSION[$key]) here always missed it: every
+     *  `if (Session::has('error')) { ...Session::flash('error')... }`
+     *  view-side check (30 files) silently never rendered, regardless of
+     *  whether a controller had actually flashed a message. Checking both
+     *  locations is a pure widening -- every existing caller either checks
+     *  a genuine top-level key (e.g. 'csrf_token', never stored as a flash
+     *  value) or is exactly this broken flash-detection pattern. */
     public static function has(string $key): bool
     {
         self::start();
-        return isset($_SESSION[$key]);
+        return isset($_SESSION[$key]) || isset($_SESSION['_flash'][$key]);
     }
 
     /** Remove a key from the session */

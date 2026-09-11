@@ -41,10 +41,29 @@
                         <?php endif; ?>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Payment Method</label>
+                        <select name="payment_method" id="paymentMethodSelect" class="form-select" onchange="updatePreview()">
+                            <option value="">— Charge only, collect payment later —</option>
+                            <option value="Cash">Cash</option>
+                            <option value="MTN Mobile Money">MTN Mobile Money</option>
+                            <option value="Airtel Money">Airtel Money</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">External Payment Reference</label>
+                        <input type="text" name="external_reference" class="form-control" maxlength="100">
+                        <div class="form-text">Optional — enter the reference provided by the bank, mobile-money provider, cheque, or other external payment channel.</div>
+                    </div>
+
                     <button type="submit" class="btn btn-primary w-100 fw-semibold" id="chargeSubmit" disabled>
-                        <i class="bi bi-cash-coin me-1"></i>Record Fee
+                        <i class="bi bi-cash-coin me-1"></i><span id="chargeSubmitLabel">Record Fee</span>
                     </button>
-                    <div class="form-text mt-2">This creates a <strong>pending</strong> charge in the Charge Ledger — it does not collect payment. Use "Mark Paid" there once the member actually pays.</div>
+                    <div class="form-text mt-2" id="chargeHelpText">This creates a <strong>pending</strong> charge in the Charge Ledger — it does not collect payment. Use "Mark Paid" there once the member actually pays.</div>
                 </form>
             </div>
         </div>
@@ -114,6 +133,13 @@ function validateForm() {
 
 function updatePreview() {
     validateForm();
+
+    const payingNow = !!document.getElementById('paymentMethodSelect').value;
+    document.getElementById('chargeSubmitLabel').textContent = payingNow ? 'Record Fee & Mark Paid' : 'Record Fee';
+    document.getElementById('chargeHelpText').innerHTML = payingNow
+        ? 'This will charge the fee <strong>and immediately mark it paid</strong> with the selected payment method — posted straight to the Charge Ledger as Paid.'
+        : 'This creates a <strong>pending</strong> charge in the Charge Ledger — it does not collect payment. Use "Mark Paid" there once the member actually pays.';
+
     const preview = document.getElementById('preview');
     const memberId = document.getElementById('memberId').value;
     const feeSelect = document.getElementById('feeSelect');
@@ -133,10 +159,12 @@ function updatePreview() {
         '<div class="d-flex justify-content-between mb-2"><span class="text-muted">Member</span><strong id="previewMember"></strong></div>' +
         '<div class="d-flex justify-content-between mb-2"><span class="text-muted">Fee</span><strong id="previewFee"></strong></div>' +
         '<div class="d-flex justify-content-between mb-2"><span class="text-muted">Frequency</span><strong id="previewFrequency"></strong></div>' +
+        '<div class="d-flex justify-content-between mb-2"><span class="text-muted">Status</span><strong id="previewStatus"></strong></div>' +
         '<hr>' +
         '<div class="d-flex justify-content-between"><span class="text-muted">Amount</span><strong class="text-primary">UGX ' + amount.toLocaleString() + '</strong></div>';
     document.getElementById('previewMember').textContent = selectedMemberLabel;
     document.getElementById('previewFee').textContent = opt.text.split(' (')[0];
     document.getElementById('previewFrequency').textContent = frequency.replace('_', ' ');
+    document.getElementById('previewStatus').textContent = payingNow ? 'Will be marked Paid' : 'Pending';
 }
 </script>

@@ -667,6 +667,191 @@ class SavingsModel extends Model
         return ['journal_entry_id' => $result['id'], 'entry_number' => $result['entry_number'], 'created' => $result['created']];
     }
 
+    // ----------------------------------------------------------------
+    // Historical Balance Brought Forward (B/F)
+    //
+    // Represents genuine member savings that already existed before/
+    // during a historical period and were not individually entered as
+    // normal transactions. Deliberately subledger-only: this NEVER calls
+    // postDeposit()/recordDepositWithPosting() and journal_entry_id
+    // always stays NULL -- no cash/bank/mobile-money was received today,
+    // so no journal is ever created for it (approved design; see
+    // results/stage-bf-implementation-readiness-audit.md §4).
+    // ----------------------------------------------------------------
+
+    /**
+     * Application-level duplicate guard: true if this account already
+     * has a net-positive, unreversed Historical B/F on record. Uses the
+     * NET effect (SUM(credit)-SUM(debit) of 'opening_balance' rows only)
+     * rather than a row count, so that reversing an incorrect B/F (which
+     * inserts an equal-and-opposite 'opening_balance' row, see
+     * reverseBroughtForward() below) correctly nets back to zero and
+     * allows a corrected replacement to be entered -- without needing a
+     * separate "is this reversed" tracking column.
+     */
+    public function hasBroughtForward(int $accountId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COALESCE(SUM(COALESCE(credit,0)-COALESCE(debit,0)),0) FROM `savings`
+             WHERE savings_account_id = ? AND transaction_type = 'opening_balance'"
+        );
+        $stmt->execute([$accountId]);
+        return (float)$stmt->fetchColumn() > 0.0;
+    }
+
+    /**
+     * Records a Historical Balance Brought Forward. $input must contain
+     * member_id, savings_account_id, amount, transaction_date (the
+     * historical as-of date -- never defaulted to today by this method;
+     * the caller is responsible for requiring it explicitly) and notes
+     * (the represented historical period, e.g. "1 May – 11 Sep 2026").
+     *
+     * payment_method is fixed to 'Other' -- a B/F was never received
+     * through any real payment channel, so none of the real channels
+     * (Cash/Mobile Money/Bank/Cheque) may be used merely to satisfy the
+     * NOT NULL column (approved design, do not use a real channel here).
+     * authorized_by is left NULL: this direct-entry design has no
+     * genuine separate approval action, and the column must never be
+     * fabricated with the creator's own id just to make it non-null.
+     */
+    public function createBroughtForward(array $input, int $userId): array
+    {
+        $accountId = (int)($input['savings_account_id'] ?? 0);
+        if ($accountId <= 0) {
+            throw new InvalidArgumentException('A Balance Brought Forward must be linked to a savings account.');
+        }
+        $memberId = (int)($input['member_id'] ?? 0);
+        if ($memberId <= 0) {
+            throw new InvalidArgumentException('A Balance Brought Forward must be linked to a member.');
+        }
+        $amount = (float)($input['amount'] ?? 0);
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Amount must be greater than zero.');
+        }
+        $transactionDate = (string)($input['transaction_date'] ?? '');
+        if ($transactionDate === '' || !DateTime::createFromFormat('Y-m-d', $transactionDate)) {
+            throw new InvalidArgumentException('Please enter a valid historical effective (as-of) date.');
+        }
+        if ($transactionDate > date('Y-m-d')) {
+            throw new InvalidArgumentException('The effective date cannot be in the future.');
+        }
+        $notes = trim((string)($input['notes'] ?? ''));
+        if ($notes === '') {
+            throw new InvalidArgumentException('Please describe the historical period this balance represents.');
+        }
+
+        if ($this->hasBroughtForward($accountId)) {
+            throw new InvalidArgumentException(
+                'This account already has a Historical Balance Brought Forward on record. ' .
+                'Reverse the existing entry first if it was entered incorrectly.'
+            );
+        }
+
+        $data = [
+            'member_id'          => $memberId,
+            'savings_account_id' => $accountId,
+            'amount'             => $amount,
+            'transaction_type'   => 'opening_balance',
+            'payment_method'     => 'Other',
+            'transaction_date'   => $transactionDate,
+            'financial_year'     => (int)date('Y', strtotime($transactionDate)),
+            'receipt_number'     => $this->generateReceiptNumber(),
+            'description'        => 'Balance Brought Forward — Historical Savings',
+            'notes'              => $notes,
+            'recorded_by'        => $userId,
+            'authorized_by'      => null,
+            'reference_number'   => null,
+        ];
+
+        $savingsId = $this->create($data);
+        if ($savingsId === false) {
+            throw new RuntimeException('Failed to record Balance Brought Forward.');
+        }
+
+        return ['id' => $savingsId, 'receipt_number' => $data['receipt_number']];
+    }
+
+    /**
+     * Corrects an incorrectly-entered B/F by reversing it — an
+     * equal-and-opposite 'opening_balance' row (debit instead of
+     * credit), never editing the original in place. Deliberately does
+     * NOT call JournalService::reverse(): a genuine B/F row has no
+     * journal_entry_id to reverse (this method explicitly refuses to
+     * touch a row that somehow does have one, rather than silently
+     * reversing a journal it was never meant to touch), preserving the
+     * subledger-only accounting boundary end to end.
+     *
+     * SavingsModel::create()'s own branching always credits any
+     * non-'withdrawal' transaction_type, so it cannot itself produce a
+     * debit-direction 'opening_balance' row -- this method builds that
+     * row directly (via the base Model::create(), bypassing that
+     * branching) rather than changing create()'s shared logic, which
+     * every deposit/withdrawal/adjustment caller also depends on.
+     */
+    public function reverseBroughtForward(int $savingsId, int $userId, string $reason): array
+    {
+        $row = $this->find($savingsId);
+        if (!$row) {
+            throw new InvalidArgumentException('Balance Brought Forward record not found.');
+        }
+        if ($row['transaction_type'] !== 'opening_balance' || (float)$row['debit'] > 0) {
+            throw new InvalidArgumentException('This transaction is not an active Balance Brought Forward entry and cannot be reversed through this action.');
+        }
+        if (!empty($row['journal_entry_id'])) {
+            throw new InvalidArgumentException('This entry is linked to a General Ledger journal and cannot be reversed through the Balance Brought Forward workflow.');
+        }
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw new InvalidArgumentException('A reason is required to reverse a Balance Brought Forward entry.');
+        }
+        $amount = (float)$row['credit'];
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('This entry has no positive balance to reverse.');
+        }
+
+        $accountId = (int)$row['savings_account_id'];
+
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $data = [
+                'member_id'             => (int)$row['member_id'],
+                'savings_account_id'    => $accountId,
+                'transaction_type'      => 'opening_balance',
+                'debit'                 => $amount,
+                'credit'                => 0.00,
+                'running_balance'       => $this->accountBalance($accountId) - $amount,
+                'payment_method'        => 'Other',
+                'cash_reference_number' => null,
+                'transaction_date'      => date('Y-m-d'),
+                'financial_year'        => (int)date('Y'),
+                'receipt_number'        => $this->generateReceiptNumber(),
+                'description'           => 'Reversal of Balance Brought Forward ' . $row['receipt_number'],
+                'notes'                 => $reason,
+                'recorded_by'           => $userId,
+                'authorized_by'         => null,
+                'reference_number'      => $row['receipt_number'],
+            ];
+
+            $newId = parent::create($data);
+            if ($newId === false) {
+                throw new RuntimeException('Failed to record the Balance Brought Forward reversal.');
+            }
+
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
+            return ['id' => $newId, 'receipt_number' => $data['receipt_number']];
+        } catch (Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     /** Account-scoped balance (mirrors MemberSavingsAccountModel::getAccountBalance() -- kept local to avoid a cross-model dependency for a one-line query). */
     private function accountBalance(int $accountId): float
     {
@@ -884,6 +1069,22 @@ class SavingsModel extends Model
             }
         }
 
+        // Stage B/F: a Historical Balance Brought Forward never carries a
+        // journal_entry_id (subledger-only, by design -- see
+        // createBroughtForward() above), so the guard above never applies
+        // to it. It still must never be edited in place: the same
+        // append-only philosophy applies, just enforced independently of
+        // journal_entry_id here. Correction is via reverseBroughtForward().
+        if ($existingRow && $existingRow['transaction_type'] === 'opening_balance') {
+            $blocked = array_intersect(self::SAVINGS_FINANCIAL_FIELDS, array_keys($data));
+            if ($blocked) {
+                throw new InvalidArgumentException(
+                    "Balance Brought Forward record {$existingRow['receipt_number']} cannot be edited. " .
+                    "To correct it, reverse it and record a fresh, corrected Balance Brought Forward instead."
+                );
+            }
+        }
+
         $hasAmount = array_key_exists('amount', $data);
         $amount    = $hasAmount ? (float)$data['amount'] : null;
         unset($data['amount']);
@@ -966,6 +1167,17 @@ class SavingsModel extends Model
                 "Savings record {$row['receipt_number']} has already been posted to the General Ledger " .
                 "(journal entry linked) and cannot be deleted. " .
                 "To correct a posted transaction, reverse it through the Controlled Corrections workflow instead."
+            );
+        }
+
+        // Stage B/F: same append-only protection as above, independent of
+        // journal_entry_id (a B/F row never has one) -- deleting it would
+        // erase the historical record with no reason/trace, contrary to
+        // the approved correction philosophy. Use reverseBroughtForward().
+        if ($row['transaction_type'] === 'opening_balance') {
+            throw new InvalidArgumentException(
+                "Balance Brought Forward record {$row['receipt_number']} cannot be deleted. " .
+                "To correct it, reverse it and record a fresh, corrected Balance Brought Forward instead."
             );
         }
 

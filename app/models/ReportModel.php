@@ -32,8 +32,13 @@ class ReportModel extends Model
                  WHERE MONTH(transaction_date)=MONTH(CURDATE()) AND YEAR(transaction_date)=YEAR(CURDATE())"
             )->fetchColumn();
 
-            // Shares (retained amounts from withdrawals)
-            $stats['total_shares'] = (float)$this->db->query("SELECT COALESCE(SUM(retained_amount),0) FROM withdrawals")->fetchColumn();
+            // Shares: was reading only withdrawals.retained_amount, blind to
+            // share_transactions -- the exact gap Stage 4-A already fixed
+            // for getShareReport() (Reports > Shares), just never applied
+            // here too, so the Dashboard and the Shares page could show two
+            // different totals for the same club-wide figure. Reuses the
+            // same proven ShareModel::totalShareCapital() merge, unchanged.
+            $stats['total_shares'] = (new ShareModel())->totalShareCapital();
 
             // Loans
             $stats['active_loans'] = (int)$this->db->query("SELECT COUNT(*) FROM loans WHERE status IN('active','overdue')")->fetchColumn();
