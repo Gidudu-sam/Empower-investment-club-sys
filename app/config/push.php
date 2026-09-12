@@ -2,42 +2,44 @@
 /**
  * Push notification (Web Push / VAPID) configuration — Stage 12-D.
  *
- * VAPID_PUBLIC_KEY is not secret by design -- it is handed to every
- * subscribing browser (see PushController::vapidPublicKey()) -- and
- * stays defined directly here, matching this project's existing config
- * convention (see database.php).
+ * PRODUCTION DEPLOYMENT:
+ * Set these environment variables on your server:
+ *   export VAPID_PUBLIC_KEY=your-public-key
+ *   export VAPID_PRIVATE_KEY=your-private-key
  *
- * Final secrets hardening (2026-09-10): VAPID_PRIVATE_KEY is no longer
- * hardcoded here. It now loads from C:\xampp\empower_secrets\
- * push_credentials.php -- a file outside C:\xampp\htdocs entirely (the
- * Apache DocumentRoot), so no URL can ever reach it regardless of
- * whether .htaccess is honored by a given hosting environment. This
- * mirrors the identical pattern already used for the SMTP password and
- * the SA-6 recovery credentials. It is read only by PushDeliveryService
- * (server-side), never rendered into any view, JS bundle, or API
- * response -- unchanged from before.
+ * DEVELOPMENT (XAMPP):
+ * Keep credentials in C:\xampp\empower_secrets\push_credentials.php:
+ *   <?php
+ *   define('EMPOWER_VAPID_PUBLIC_KEY', 'your-public-key');
+ *   define('EMPOWER_VAPID_PRIVATE_KEY', 'your-private-key');
  *
- * If the external file is missing, VAPID_PRIVATE_KEY resolves to an
- * empty string -- there is no fallback to the old hardcoded value or to
- * any other key. PushDeliveryService's WebPush construction will then
- * fail loudly the next time a push is attempted, rather than silently
- * signing with a stale/default key.
- *
- * The keypair itself was generated once via
- * Minishlink\WebPush\VAPID::createVapidKeys() on 2026-09-04 for this
- * deployment. Regenerating it invalidates every existing browser
- * subscription (they would all need to re-subscribe) -- do not
- * regenerate casually.
+ * Generate new VAPID keys using: vendor/bin/web-push generate-keys
+ * (or Minishlink\WebPush\VAPID::createVapidKeys() in PHP)
  */
 
-define('VAPID_PUBLIC_KEY', 'BAHE4YxR_QaDI5hQxFsl7jeimF0UzqMmaGjVAtJa9uLgSn4RZc6Y898y-bc7XCvHWnyBe_4PfmnAzL2duRF4vjs');
+// Try environment variables first (production)
+$vapidPublicKey = getenv('VAPID_PUBLIC_KEY');
+$vapidPrivateKey = getenv('VAPID_PRIVATE_KEY');
 
-$__empowerPushSecretFile = 'C:\\xampp\\empower_secrets\\push_credentials.php';
-if (file_exists($__empowerPushSecretFile)) {
-    require $__empowerPushSecretFile;
+// Fallback to local secrets file (development on Windows/XAMPP)
+if (!$vapidPublicKey || !$vapidPrivateKey) {
+    $secretFile = 'C:\\xampp\\empower_secrets\\push_credentials.php';
+    if (file_exists($secretFile)) {
+        require $secretFile;
+        $vapidPublicKey = defined('EMPOWER_VAPID_PUBLIC_KEY') ? EMPOWER_VAPID_PUBLIC_KEY : '';
+        $vapidPrivateKey = defined('EMPOWER_VAPID_PRIVATE_KEY') ? EMPOWER_VAPID_PRIVATE_KEY : '';
+    }
+    // If still not set, use the original hardcoded public key (development only)
+    if (!$vapidPublicKey) {
+        $vapidPublicKey = 'BAHE4YxR_QaDI5hQxFsl7jeimF0UzqMmaGjVAtJa9uLgSn4RZc6Y898y-bc7XCvHWnyBe_4PfmnAzL2duRF4vjs';
+    }
 }
-define('VAPID_PRIVATE_KEY', defined('EMPOWER_VAPID_PRIVATE_KEY') ? EMPOWER_VAPID_PRIVATE_KEY : '');
-unset($__empowerPushSecretFile);
+
+define('VAPID_PUBLIC_KEY',  $vapidPublicKey);
+define('VAPID_PRIVATE_KEY', $vapidPrivateKey);
+
+// Clear sensitive variables from memory
+unset($vapidPublicKey, $vapidPrivateKey, $secretFile);
 
 // VAPID "sub" claim -- identifies who to contact about this application's
 // push traffic, per RFC 8292. A URL is a valid alternative to mailto: and

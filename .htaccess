@@ -3,6 +3,14 @@ Options -Indexes
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # ============================================================
+    # PRODUCTION SECURITY: Force HTTPS
+    # Comment out these lines in development (XAMPP without SSL)
+    # ============================================================
+    # RewriteCond %{HTTPS} off
+    # RewriteCond %{HTTP_HOST} !^localhost [NC]
+    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
     # Deny access to internal application directories -- these hold PHP
     # source, models, and raw SQL/migration files reached only via PHP
     # require/include (a filesystem operation, unaffected by this rule),
@@ -45,3 +53,23 @@ Options -Indexes
 <FilesMatch "(?i)^(?!index\.php$).*\.php$">
     Require all denied
 </FilesMatch>
+
+# ============================================================
+# PRODUCTION SECURITY: Security Headers
+# ============================================================
+<IfModule mod_headers.c>
+    # HSTS: Force HTTPS for 1 year (only set when HTTPS is active)
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+    
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # XSS Protection (older browsers)
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Content sniffing protection
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

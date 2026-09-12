@@ -1,0 +1,50 @@
+# Empower Investment Club - Environment Variables
+# Copy this file and set these variables on your production server
+# 
+# For VPS (Ubuntu/Debian): Add to /etc/environment
+# For cPanel: Use the Environment Variables section in control panel
+# For .env file approach: Save as .env in project root (not recommended for production)
+
+# ============================================================
+# APPLICATION SETTINGS
+# ============================================================
+APP_ENV=production
+APP_URL=https://yourdomain.com
+
+# ============================================================
+# DATABASE CREDENTIALS
+# ============================================================
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=empower_db
+DB_USER=empower_app
+DB_PASS=your_secure_database_password_here
+
+# ============================================================
+# EMAIL / SMTP SETTINGS
+# ============================================================
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-gmail-app-password
+SMTP_FROM=noreply@yourdomain.com
+SMTP_FROM_NAME="Empower Investment Club"
+
+# ============================================================
+# PUSH NOTIFICATIONS (Optional - Generate keys first)
+# ============================================================
+# Generate VAPID keys using: vendor/bin/web-push generate-keys
+# Or in PHP: Minishlink\WebPush\VAPID::createVapidKeys()
+VAPID_PUBLIC_KEY=your-vapid-public-key-here
+VAPID_PRIVATE_KEY=your-vapid-private-key-here
+
+# ============================================================
+# NOTES:
+# ============================================================
+# 1. Never commit this file with real values to git
+# 2. Use strong, unique passwords (minimum 16 characters)
+# 3. Gmail SMTP requires an "App Password", not your account password
+#    Generate at: https://myaccount.google.com/apppasswords
+# 4. After setting environment variables, restart Apache:
+#    sudo systemctl restart apache2
+# 5. Verify variables are loaded: printenv | grep -E "APP_|DB_|SMTP_"
