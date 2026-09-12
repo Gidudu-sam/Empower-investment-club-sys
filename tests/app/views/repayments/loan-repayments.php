@@ -94,7 +94,7 @@ $pct          = $totalPayable > 0 ? min(100, round(($paid / $totalPayable) * 100
                     <td class="ps-3 text-muted small"><?= $i+1 ?></td>
                     <td>
                         <a href="<?=$base?>?page=repayment-view&id=<?=$r['id']?>"
-                           class="fw-semibold text-decoration-none" style="color:var(--brand-orange)">
+                           class="fw-semibold text-decoration-none" style="color:var(--ink)">
                             <?= htmlspecialchars($r['repayment_number']) ?>
                         </a>
                     </td>

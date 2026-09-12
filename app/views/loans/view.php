@@ -43,7 +43,7 @@ $isApproverRole  = Session::hasRole(['admin', 'chairman', 'vice_chairman']);
 $isOwnLoan       = (int)($loan['recorded_by'] ?? 0) === $currentUserId;
 $canApproveLoan  = $isApproverRole && $loan['status'] === 'pending_approval' && !$isOwnLoan;
 $canRejectLoan   = $isApproverRole && $loan['status'] === 'pending_approval';
-$canDisburseLoan = $isApproverRole && $loan['status'] === 'approved';
+$canDisburseLoan = Session::hasRole(['admin', 'chairman', 'vice_chairman', 'loans_officer']) && $loan['status'] === 'approved';
 // Legacy accounting-retry button: only for loans that predate/sit outside
 // the Stage 8 workflow (never 'approved' -- that must use Disburse instead;
 // LoanController::postDisbursementAction() enforces this same rule server-side).
@@ -250,6 +250,28 @@ $subtitle = '<a href="' . $base . '?page=member-view&id=' . $loan['member_id'] .
                 <div class="detail-label">Issue Date</div>
                 <div class="detail-value"><?= date('d M Y', strtotime($loan['issue_date'])) ?></div>
             </div>
+            <?php if (!empty($loan['disbursement_date'])): ?>
+            <div class="detail-item">
+                <div class="detail-label">Disbursed On</div>
+                <div class="detail-value"><?= date('d M Y', strtotime($loan['disbursement_date'])) ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($loan['disbursement_method'])): ?>
+            <div class="detail-item">
+                <div class="detail-label">Funded Via</div>
+                <div class="detail-value">
+                    <?php
+                    $icon = match($loan['disbursement_method']) {
+                        'Cash'                          => 'bi-cash-coin text-success',
+                        'MTN Mobile Money', 'Airtel Money' => 'bi-phone text-warning',
+                        'Bank Transfer', 'Cheque'       => 'bi-bank text-primary',
+                        default                         => 'bi-arrow-right-circle text-secondary',
+                    };
+                    ?>
+                    <i class="bi <?= $icon ?> me-1"></i><?= htmlspecialchars($loan['disbursement_method']) ?>
+                </div>
+            </div>
+            <?php endif; ?>
             <div class="detail-item">
                 <div class="detail-label">Due Date</div>
                 <div class="detail-value <?= ($daysRemaining < 0 && !$isCompleted)?'text-danger':'' ?>">
@@ -317,13 +339,9 @@ $subtitle = '<a href="' . $base . '?page=member-view&id=' . $loan['member_id'] .
             <?php endif; ?>
 
             <?php if ($canDisburseLoan): ?>
-            <form method="POST" action="<?= $base ?>?page=loan-disburse" onsubmit="return confirm('Disburse this loan? This posts the accounting entry and cannot be undone from this screen.');">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
-                <input type="hidden" name="loan_id" value="<?= $loan['id'] ?>">
-                <button type="submit" class="btn btn-sm btn-success">
-                    <i class="bi bi-cash-coin me-1"></i>Disburse
-                </button>
-            </form>
+            <a href="<?= $base ?>?page=loan-disburse-form&id=<?= $loan['id'] ?>" class="btn btn-sm btn-success">
+                <i class="bi bi-cash-coin me-1"></i>Disburse
+            </a>
             <?php endif; ?>
         </div>
     </div>
@@ -553,7 +571,7 @@ foreach ($installments as $inst):
                         <?php foreach ($repayments as $r): ?>
                         <tr>
                             <td class="ps-3">
-                                <a href="<?= $base ?>?page=repayment-view&id=<?= $r['id'] ?>" class="text-decoration-none fw-semibold" style="color:var(--brand-orange);font-size:.78rem">
+                                <a href="<?= $base ?>?page=repayment-view&id=<?= $r['id'] ?>" class="text-decoration-none fw-semibold" style="color:var(--ink);font-size:.78rem">
                                     <?= htmlspecialchars($r['repayment_number']) ?>
                                 </a>
                             </td>

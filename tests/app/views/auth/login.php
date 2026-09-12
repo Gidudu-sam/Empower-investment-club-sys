@@ -227,7 +227,7 @@
 
         .forgot-link {
             font-size: .72rem;
-            color: var(--gold);
+            color: var(--slate);
             text-decoration: none;
             font-weight: 500;
         }

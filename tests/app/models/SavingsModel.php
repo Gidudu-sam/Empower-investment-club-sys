@@ -700,19 +700,42 @@ class SavingsModel extends Model
     }
 
     /**
+     * Stage B/F Dual Posting Modes: which of the ordinary deposit payment
+     * methods a 'verified_asset' B/F may claim as its backing account --
+     * deliberately excludes 'Other', since 'Other' has no real GL account
+     * behind it and is reserved for 'historical_only' (unchanged from the
+     * original single-mode design).
+     */
+    public const BF_VERIFIED_ASSET_METHODS = ['Cash', 'MTN Mobile Money', 'Airtel Money', 'Bank Transfer', 'Cheque'];
+
+    /**
      * Records a Historical Balance Brought Forward. $input must contain
      * member_id, savings_account_id, amount, transaction_date (the
      * historical as-of date -- never defaulted to today by this method;
-     * the caller is responsible for requiring it explicitly) and notes
-     * (the represented historical period, e.g. "1 May – 11 Sep 2026").
+     * the caller is responsible for requiring it explicitly), notes
+     * (the represented historical period, e.g. "1 May – 11 Sep 2026")
+     * and posting_mode ('verified_asset' or 'historical_only').
      *
-     * payment_method is fixed to 'Other' -- a B/F was never received
-     * through any real payment channel, so none of the real channels
-     * (Cash/Mobile Money/Bank/Cheque) may be used merely to satisfy the
-     * NOT NULL column (approved design, do not use a real channel here).
-     * authorized_by is left NULL: this direct-entry design has no
-     * genuine separate approval action, and the column must never be
-     * fabricated with the creator's own id just to make it non-null.
+     * Two modes (Stage B/F Dual Posting Modes):
+     *
+     * 'verified_asset' -- the club currently holds real funds (Cash/Bank/
+     * Mobile Money) backing this balance. $input must also contain
+     * payment_method (one of BF_VERIFIED_ASSET_METHODS). Posts Dr <that
+     * asset account> / Cr Members' Savings Liability through
+     * JournalService::post(), identically to how an ordinary deposit
+     * posts (postDeposit()) -- same accounts, same atomic pattern, same
+     * idempotency guarantee. journal_entry_id IS set.
+     *
+     * 'historical_only' -- the member's balance is known but no club
+     * asset has been independently verified. payment_method is forced to
+     * 'Other' (never a real channel, unchanged from the original
+     * design). NO journal is created -- never Dr Cash/Bank/Mobile Money,
+     * never a suspense/equity/other-income plug. journal_entry_id stays
+     * NULL, exactly as every B/F row did before this mode distinction
+     * existed. authorized_by is left NULL in both modes: this direct-
+     * entry design has no genuine separate approval action, and the
+     * column must never be fabricated with the creator's own id just to
+     * make it non-null.
      */
     public function createBroughtForward(array $input, int $userId): array
     {
@@ -740,6 +763,16 @@ class SavingsModel extends Model
             throw new InvalidArgumentException('Please describe the historical period this balance represents.');
         }
 
+        // Defaults to 'historical_only' when the caller doesn't specify --
+        // the strictly safer option (never creates a journal), and keeps
+        // every pre-dual-mode caller (including the original test suite,
+        // which calls this method directly without posting_mode) working
+        // completely unchanged, exactly as it always has.
+        $postingMode = (string)($input['posting_mode'] ?? 'historical_only');
+        if (!in_array($postingMode, ['verified_asset', 'historical_only'], true)) {
+            throw new InvalidArgumentException('Please select a Funds Position: Cash, Bank, Mobile Money, or Historical Only.');
+        }
+
         if ($this->hasBroughtForward($accountId)) {
             throw new InvalidArgumentException(
                 'This account already has a Historical Balance Brought Forward on record. ' .
@@ -747,12 +780,27 @@ class SavingsModel extends Model
             );
         }
 
+        $paymentMethod   = 'Other';
+        $assetAccountId  = null;
+        $assetAccount    = null;
+        if ($postingMode === 'verified_asset') {
+            $paymentMethod = (string)($input['payment_method'] ?? '');
+            if (!in_array($paymentMethod, self::BF_VERIFIED_ASSET_METHODS, true)) {
+                throw new InvalidArgumentException('Select which account (Cash, Bank, or Mobile Money) actually holds these funds.');
+            }
+            $assetAccountId = self::PAYMENT_ACCOUNTS[$paymentMethod];
+            $assetAccount = (new AccountModel())->findActive($assetAccountId);
+            if (!$assetAccount) {
+                throw new InvalidArgumentException("The {$paymentMethod} account does not exist or is inactive.");
+            }
+        }
+
         $data = [
             'member_id'          => $memberId,
             'savings_account_id' => $accountId,
             'amount'             => $amount,
             'transaction_type'   => 'opening_balance',
-            'payment_method'     => 'Other',
+            'payment_method'     => $paymentMethod,
             'transaction_date'   => $transactionDate,
             'financial_year'     => (int)date('Y', strtotime($transactionDate)),
             'receipt_number'     => $this->generateReceiptNumber(),
@@ -761,25 +809,108 @@ class SavingsModel extends Model
             'recorded_by'        => $userId,
             'authorized_by'      => null,
             'reference_number'   => null,
+            'bf_posting_mode'    => $postingMode,
+            'bf_asset_account_id'=> $assetAccountId,
         ];
 
-        $savingsId = $this->create($data);
-        if ($savingsId === false) {
-            throw new RuntimeException('Failed to record Balance Brought Forward.');
+        if ($postingMode === 'historical_only') {
+            $savingsId = $this->create($data);
+            if ($savingsId === false) {
+                throw new RuntimeException('Failed to record Balance Brought Forward.');
+            }
+            return ['id' => $savingsId, 'receipt_number' => $data['receipt_number'], 'posting_mode' => $postingMode];
         }
 
-        return ['id' => $savingsId, 'receipt_number' => $data['receipt_number']];
+        // verified_asset: create the subledger row and post the journal
+        // atomically -- identical shape to recordDepositWithPosting().
+        $liabilityAccount = (new AccountModel())->findActive(self::SAVINGS_LIABILITY_ACCOUNT);
+        if (!$liabilityAccount) {
+            throw new InvalidArgumentException('The Members\' Savings liability account does not exist or is inactive.');
+        }
+
+        $periodStmt = $this->db->prepare("
+            SELECT ap.id AS period_id, ap.financial_year_id
+            FROM `accounting_periods` ap
+            LEFT JOIN `financial_years` fy ON fy.id = ap.financial_year_id
+            WHERE ap.status = 'open'
+              AND ap.start_date <= ? AND ap.end_date >= ?
+              AND (fy.status = 'active' OR fy.status IS NULL)
+            LIMIT 1
+        ");
+        $periodStmt->execute([$transactionDate, $transactionDate]);
+        $period = $periodStmt->fetch();
+
+        $member = (new MemberModel())->find($memberId);
+        $memberLabel = $member ? trim(($member['first_name'] ?? '') . ' ' . ($member['last_name'] ?? '')) : ('member #' . $memberId);
+
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $savingsId = $this->create($data);
+            if ($savingsId === false) {
+                throw new RuntimeException('Failed to record Balance Brought Forward.');
+            }
+
+            $service = new JournalService();
+            $result = $service->post([
+                'entry_date'            => $transactionDate,
+                'description'           => "Balance Brought Forward {$data['receipt_number']} — {$memberLabel} (verified {$paymentMethod})",
+                'source_module'         => 'savings',
+                'source_reference_type' => 'brought_forward',
+                'source_reference_id'   => $savingsId,
+                'financial_year_id'     => $period['financial_year_id'] ?? null,
+                'accounting_period_id'  => $period['period_id'] ?? null,
+                'created_by'            => $userId,
+                'lines'                 => [
+                    ['account_id' => $assetAccountId, 'debit' => $amount, 'credit' => 0, 'description' => $paymentMethod],
+                    ['account_id' => self::SAVINGS_LIABILITY_ACCOUNT, 'debit' => 0, 'credit' => $amount, 'description' => 'Members\' Savings — Balance Brought Forward'],
+                ],
+            ]);
+
+            // Bypasses SavingsModel::update()'s opening_balance guard
+            // deliberately -- that guard exists to stop someone editing a
+            // B/F's financial facts after the fact; this is the one-time,
+            // same-transaction initial set of journal_entry_id right after
+            // insert, not an edit. parent::update() carries no such guard
+            // (the same reasoning reverseBroughtForward() already applies
+            // to parent::create() above).
+            parent::update($savingsId, ['journal_entry_id' => $result['id']]);
+
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
+
+            return [
+                'id'               => $savingsId,
+                'receipt_number'   => $data['receipt_number'],
+                'posting_mode'     => $postingMode,
+                'journal_entry_id' => (int)$result['id'],
+                'entry_number'     => $result['entry_number'],
+                'asset_account'    => $assetAccount['name'],
+            ];
+        } catch (Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
     }
 
     /**
      * Corrects an incorrectly-entered B/F by reversing it — an
      * equal-and-opposite 'opening_balance' row (debit instead of
      * credit), never editing the original in place. Deliberately does
-     * NOT call JournalService::reverse(): a genuine B/F row has no
-     * journal_entry_id to reverse (this method explicitly refuses to
+     * NOT call JournalService::reverse(): a 'historical_only' B/F row has
+     * no journal_entry_id to reverse (this method explicitly refuses to
      * touch a row that somehow does have one, rather than silently
      * reversing a journal it was never meant to touch), preserving the
-     * subledger-only accounting boundary end to end.
+     * subledger-only accounting boundary end to end. Stage B/F Dual
+     * Posting Modes: this refusal now also means a 'verified_asset' row
+     * (which always has journal_entry_id set) can only be corrected
+     * through the Controlled Corrections workflow, like any other posted
+     * GL transaction -- never through this subledger-only shortcut.
      *
      * SavingsModel::create()'s own branching always credits any
      * non-'withdrawal' transaction_type, so it cannot itself produce a
@@ -833,6 +964,8 @@ class SavingsModel extends Model
                 'recorded_by'           => $userId,
                 'authorized_by'         => null,
                 'reference_number'      => $row['receipt_number'],
+                'bf_posting_mode'       => 'historical_only',
+                'bf_asset_account_id'   => null,
             ];
 
             $newId = parent::create($data);
@@ -850,6 +983,182 @@ class SavingsModel extends Model
             }
             throw $e;
         }
+    }
+
+    /**
+     * Stage B/F Unclassified Review: explicitly classifies an existing
+     * unclassified B/F (one recorded before the dual-posting-mode stage,
+     * or any other row that somehow still has bf_posting_mode=NULL). This
+     * is the ONLY path allowed to set bf_posting_mode/bf_asset_account_id
+     * on an EXISTING row -- SavingsModel::update() refuses both fields for
+     * any opening_balance row (SAVINGS_FINANCIAL_FIELDS), so this method
+     * deliberately uses parent::update() to bypass that guard, exactly
+     * the same reasoning already applied to journal_entry_id in
+     * createBroughtForward().
+     *
+     * Never infers a classification from date/amount/account/history --
+     * $postingMode must be explicitly supplied by the caller (the
+     * classification screen), and this method's only job is to validate
+     * it, apply it exactly once, and -- for verified_asset -- post the
+     * identical Dr-asset/Cr-liability journal createBroughtForward()
+     * would have posted had the record been entered this way originally.
+     */
+    public function classifyBroughtForward(int $savingsId, string $postingMode, ?string $paymentMethod, ?string $reason, int $userId): array
+    {
+        $row = $this->find($savingsId);
+        if (!$row) {
+            throw new InvalidArgumentException('Balance Brought Forward record not found.');
+        }
+        if ($row['transaction_type'] !== 'opening_balance' || (float)$row['debit'] > 0) {
+            throw new InvalidArgumentException('This is not an active Balance Brought Forward entry.');
+        }
+        if ($row['bf_posting_mode'] !== null) {
+            throw new InvalidArgumentException('This Balance Brought Forward has already been classified as ' . $row['bf_posting_mode'] . ' and cannot be classified again.');
+        }
+        if (!empty($row['journal_entry_id'])) {
+            // Defensive only -- an unclassified row should never already
+            // have one, but never silently re-post over an existing journal.
+            throw new InvalidArgumentException('This entry already has a linked journal and cannot be classified through this workflow.');
+        }
+        if (!in_array($postingMode, ['verified_asset', 'historical_only'], true)) {
+            throw new InvalidArgumentException('Please select a classification: Cash, Bank, Mobile Money, or Historical Only.');
+        }
+
+        $amount = (float)$row['credit'];
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('This entry has no positive balance to classify.');
+        }
+
+        if ($postingMode === 'historical_only') {
+            $reason = trim((string)$reason);
+            if ($reason === '') {
+                throw new InvalidArgumentException('Please explain why the corresponding club asset has not been independently verified.');
+            }
+            $newNotes = rtrim((string)$row['notes'], '. ') . '. Classified Historical Only: ' . $reason;
+            parent::update($savingsId, [
+                'bf_posting_mode'     => 'historical_only',
+                'bf_asset_account_id' => null,
+                'notes'               => $newNotes,
+            ]);
+            $this->log($userId, 'bf_classified', sprintf(
+                'B/F %s classified as historical_only by user #%d: %s', $row['receipt_number'], $userId, $reason
+            ));
+            return ['id' => $savingsId, 'receipt_number' => $row['receipt_number'], 'posting_mode' => 'historical_only'];
+        }
+
+        // verified_asset -- same validated method list createBroughtForward() uses, never an arbitrary Chart of Accounts pick.
+        if (!in_array($paymentMethod, self::BF_VERIFIED_ASSET_METHODS, true)) {
+            throw new InvalidArgumentException('Select which account (Cash, Bank, or Mobile Money) actually holds these funds.');
+        }
+        $assetAccountId = self::PAYMENT_ACCOUNTS[$paymentMethod];
+        $assetAccount = (new AccountModel())->findActive($assetAccountId);
+        if (!$assetAccount) {
+            throw new InvalidArgumentException("The {$paymentMethod} account does not exist or is inactive.");
+        }
+        $liabilityAccount = (new AccountModel())->findActive(self::SAVINGS_LIABILITY_ACCOUNT);
+        if (!$liabilityAccount) {
+            throw new InvalidArgumentException('The Members\' Savings liability account does not exist or is inactive.');
+        }
+
+        $transactionDate = (string)$row['transaction_date'];
+        $periodStmt = $this->db->prepare("
+            SELECT ap.id AS period_id, ap.financial_year_id
+            FROM `accounting_periods` ap
+            LEFT JOIN `financial_years` fy ON fy.id = ap.financial_year_id
+            WHERE ap.status = 'open'
+              AND ap.start_date <= ? AND ap.end_date >= ?
+              AND (fy.status = 'active' OR fy.status IS NULL)
+            LIMIT 1
+        ");
+        $periodStmt->execute([$transactionDate, $transactionDate]);
+        $period = $periodStmt->fetch();
+
+        $member = (new MemberModel())->find((int)$row['member_id']);
+        $memberLabel = $member ? trim(($member['first_name'] ?? '') . ' ' . ($member['last_name'] ?? '')) : ('member #' . $row['member_id']);
+
+        $ownTransaction = !$this->db->inTransaction();
+        if ($ownTransaction) {
+            $this->db->beginTransaction();
+        }
+        try {
+            $service = new JournalService();
+            $result = $service->post([
+                'entry_date'            => $transactionDate,
+                'description'           => "Balance Brought Forward {$row['receipt_number']} — {$memberLabel} (classified verified {$paymentMethod})",
+                'source_module'         => 'savings',
+                'source_reference_type' => 'brought_forward',
+                'source_reference_id'   => $savingsId,
+                'financial_year_id'     => $period['financial_year_id'] ?? null,
+                'accounting_period_id'  => $period['period_id'] ?? null,
+                'created_by'            => $userId,
+                'lines'                 => [
+                    ['account_id' => $assetAccountId, 'debit' => $amount, 'credit' => 0, 'description' => $paymentMethod],
+                    ['account_id' => self::SAVINGS_LIABILITY_ACCOUNT, 'debit' => 0, 'credit' => $amount, 'description' => 'Members\' Savings — Balance Brought Forward (classified)'],
+                ],
+            ]);
+
+            parent::update($savingsId, [
+                'bf_posting_mode'     => 'verified_asset',
+                'bf_asset_account_id' => $assetAccountId,
+                'payment_method'      => $paymentMethod,
+                'journal_entry_id'    => $result['id'],
+            ]);
+
+            if ($ownTransaction) {
+                $this->db->commit();
+            }
+
+            $this->log($userId, 'bf_classified', sprintf(
+                'B/F %s classified as verified_asset (%s) by user #%d — posted as journal entry %s',
+                $row['receipt_number'], $paymentMethod, $userId, $result['entry_number']
+            ));
+
+            return [
+                'id'               => $savingsId,
+                'receipt_number'   => $row['receipt_number'],
+                'posting_mode'     => 'verified_asset',
+                'journal_entry_id' => (int)$result['id'],
+                'entry_number'     => $result['entry_number'],
+                'asset_account'    => $assetAccount['name'],
+            ];
+        } catch (Throwable $e) {
+            if ($ownTransaction && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Stage B/F Unclassified Review: every B/F (active, credit-direction
+     * opening_balance row) system-wide, for the register/list screen --
+     * not scoped to one account, since the review workflow needs to
+     * surface every outstanding unclassified record across the club.
+     */
+    public function listBroughtForwardRegister(?string $statusFilter = null): array
+    {
+        $sql = "
+            SELECT s.id, s.member_id, s.savings_account_id, s.credit, s.transaction_date,
+                   s.receipt_number, s.notes, s.recorded_by, s.journal_entry_id,
+                   s.bf_posting_mode, s.bf_asset_account_id, s.created_at,
+                   m.first_name, m.last_name, m.member_number,
+                   msa.account_number, msa.account_type,
+                   u.full_name AS recorded_by_name,
+                   a.name AS asset_account_name
+            FROM `savings` s
+            LEFT JOIN `members` m ON m.id = s.member_id
+            LEFT JOIN `member_savings_accounts` msa ON msa.id = s.savings_account_id
+            LEFT JOIN `users` u ON u.id = s.recorded_by
+            LEFT JOIN `accounts` a ON a.id = s.bf_asset_account_id
+            WHERE s.transaction_type = 'opening_balance' AND s.debit = 0 AND s.credit > 0
+        ";
+        if ($statusFilter === 'unclassified') {
+            $sql .= " AND s.bf_posting_mode IS NULL";
+        } elseif ($statusFilter === 'classified') {
+            $sql .= " AND s.bf_posting_mode IS NOT NULL";
+        }
+        $sql .= " ORDER BY (s.bf_posting_mode IS NULL) DESC, s.transaction_date DESC, s.id DESC";
+        return $this->db->query($sql)->fetchAll();
     }
 
     /** Account-scoped balance (mirrors MemberSavingsAccountModel::getAccountBalance() -- kept local to avoid a cross-model dependency for a one-line query). */
@@ -1052,6 +1361,14 @@ class SavingsModel extends Model
         'transaction_type', 'payment_method', 'transaction_date',
         'financial_year', 'cash_reference_number', 'journal_entry_id',
         'running_balance', 'recorded_by',
+        // Stage B/F Unclassified Review: a B/F's classification is exactly
+        // as financially significant as its amount or journal_entry_id --
+        // blocked here so the ONLY way to ever set these two columns is
+        // through classifyBroughtForward() (verified_asset's own Dr/Cr
+        // posting) or createBroughtForward() (setting them at original
+        // entry time), both of which use parent::update()/create() to
+        // deliberately bypass this same guard, never a plain edit.
+        'bf_posting_mode', 'bf_asset_account_id',
     ];
 
     public function update(int $id, array $data): bool

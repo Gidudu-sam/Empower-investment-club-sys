@@ -111,6 +111,13 @@ class RepaymentController extends Controller
             'csrfToken'        => $this->getCsrf(),
             'preLoan'          => $preLoan,
             'outstandingPenalty' => $outstandingPenalty,
+            // Stage — Loan Repayment Interest Recognition & Submission
+            // Integrity: one fresh token per rendered form. Backed by
+            // uk_repayments_submission_token (a real DB unique constraint)
+            // so a double-click/resubmit of THIS rendering can never post
+            // twice, while a genuinely new payment gets a fresh token
+            // because the operator loads this form again for it.
+            'submissionToken'  => bin2hex(random_bytes(16)),
         ], 'main');
     }
 
@@ -343,6 +350,22 @@ class RepaymentController extends Controller
             return;
         }
 
+        // Stage — Loan Repayment Interest Recognition & Submission
+        // Integrity Finding 3: a resubmission of the SAME rendered form
+        // (double-click, browser back+resubmit, network retry) carries the
+        // same submission_token as the repayment already recorded for it.
+        // Caught here, before generating a new repayment_number or calling
+        // any record*() method, so a duplicate can never reach a second
+        // INSERT. This is a convenience fast-path only -- the actual
+        // guarantee is uk_repayments_submission_token (see the catch
+        // block below and RepaymentModel::insertRepaymentRow()).
+        $existing = $this->model->findBySubmissionToken((string)($input['submission_token'] ?? ''));
+        if ($existing) {
+            Session::flash('success', "Payment {$existing['repayment_number']} was already recorded from this submission.");
+            $this->redirect(APP_URL . '/index.php?page=repayment-view&id=' . $existing['id']);
+            return;
+        }
+
         $userId = (int)Session::get('user_id');
         $input['repayment_number'] = $this->model->generateRepaymentNumber();
         $input['received_by']      = $userId;
@@ -369,6 +392,20 @@ class RepaymentController extends Controller
                     $newId = $this->model->recordRepayment($input);
                     break;
             }
+        } catch (DuplicateRepaymentSubmissionException $e) {
+            // The DB-level uk_repayments_submission_token constraint won
+            // a race that the pre-check above could theoretically lose
+            // (two near-simultaneous requests for the same rendered form).
+            // Treat it the same friendly way: find the winner, redirect.
+            $winner = $this->model->findBySubmissionToken((string)($input['submission_token'] ?? ''));
+            if ($winner) {
+                Session::flash('success', "Payment {$winner['repayment_number']} was already recorded from this submission.");
+                $this->redirect(APP_URL . '/index.php?page=repayment-view&id=' . $winner['id']);
+            } else {
+                Session::flash('error', 'This repayment was already submitted and recorded.');
+                $this->redirect(APP_URL . '/index.php?page=repayments');
+            }
+            return;
         } catch (Throwable $e) {
             Session::flash('error', 'Failed to record payment: ' . $e->getMessage());
             Session::flash('form_old', $input);
@@ -431,10 +468,15 @@ class RepaymentController extends Controller
             'payment_date'     => $s('payment_date', date('Y-m-d')),
             'amount_paid'      => (float)($_POST['amount_paid'] ?? 0),
             'penalty_paid'     => (float)($_POST['penalty_paid'] ?? 0),
-            'payment_method'   => $s('payment_method', 'Cash'),
+            // Stage — Loan Repayment Interest Recognition & Submission
+            // Integrity Finding 2: no silent default. A missing/blank
+            // payment_method now becomes '', which fails validate()'s
+            // in_array() check below instead of quietly becoming 'Cash'.
+            'payment_method'   => $s('payment_method'),
             'reference_number' => $s('reference_number') ?: null,
             'notes'            => $s('notes') ?: null,
             'week_covered'     => $s('week_covered') ?: null,
+            'submission_token' => $s('submission_token') ?: null,
         ];
     }
 
@@ -466,7 +508,15 @@ class RepaymentController extends Controller
         }
 
         if (!in_array($d['payment_method'], ['Cash','Airtel Money','MTN Mobile Money','Bank Transfer','Cheque','Other'], true)) {
-            $e['payment_method'] = 'Select a valid payment method.';
+            $e['payment_method'] = 'Select a payment source.';
+        }
+
+        // Stage — Loan Repayment Interest Recognition & Submission
+        // Integrity Finding 3: the token is generated server-side on every
+        // GET render of this form (RepaymentController::add()); its absence
+        // here means the request did not originate from that form at all.
+        if (empty($d['submission_token'])) {
+            $e['submission_token'] = 'Your session has expired. Please reload the repayment form and try again.';
         }
 
         // Penalty collection (Stage 17 Part C) -- this is a nice-error-message

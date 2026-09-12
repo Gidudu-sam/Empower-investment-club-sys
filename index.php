@@ -150,6 +150,9 @@ $routes = [
     'savings-account-bf-store'          => ['SavingsAccountController', 'bfStore'],
     'savings-account-bf-reverse'        => ['SavingsAccountController', 'bfReverseForm'],
     'savings-account-bf-reverse-store'  => ['SavingsAccountController', 'bfReverseStore'],
+    'savings-account-bf-register'       => ['SavingsAccountController', 'bfRegister'],
+    'savings-account-bf-classify'       => ['SavingsAccountController', 'bfClassifyForm'],
+    'savings-account-bf-classify-store' => ['SavingsAccountController', 'bfClassifyStore'],
     // Reports module
     'reports'                => ['ReportController',     'index'],
     'report-members'         => ['ReportController',     'members'],
@@ -266,6 +269,7 @@ $routes = [
     'loan-submit'            => ['LoanController',       'submit'],
     'loan-approve'           => ['LoanController',       'approve'],
     'loan-reject'            => ['LoanController',       'reject'],
+    'loan-disburse-form'     => ['LoanController',       'disburseForm'],
     'loan-disburse'          => ['LoanController',       'disburse'],
     'loan-delete'            => ['LoanController',       'delete'],
     'loan-complete'          => ['LoanController',       'markComplete'],
@@ -301,6 +305,11 @@ $routes = [
     'repayment-report'       => ['RepaymentController',  'report'],
     'repayment-loan-search'  => ['RepaymentController',  'loanSearch'],
     'repayment-delete'       => ['RepaymentController',  'delete'],
+    // Birthday Email module
+    'birthday-dashboard'     => ['BirthdayController', 'index'],
+    'birthday-send'          => ['BirthdayController', 'send'],
+    'birthday-preview'       => ['BirthdayController', 'preview'],
+    'birthday-history'       => ['BirthdayController', 'history'],
     // Statements module
     'statements'             => ['StatementController',  'index'],
     'statement-view'         => ['StatementController',  'view'],

@@ -214,13 +214,14 @@ $isAwaitingApprovalView = ($status === 'pending_approval');
                     <th class="text-end d-none d-md-table-cell">Outstanding</th>
                     <th class="d-none d-lg-table-cell">Issue Date</th>
                     <th class="d-none d-lg-table-cell">Due / Days Left</th>
+                    <th class="d-none d-xl-table-cell">Funding Source</th>
                     <th class="text-center">Status</th>
                     <th class="text-end pe-3">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($loans)): ?>
-                <tr><td colspan="8" class="text-center py-5 text-muted">
+                <tr><td colspan="9" class="text-center py-5 text-muted">
                     <i class="bi bi-bank2 fs-1 d-block mb-2 opacity-25"></i>
                     <?php if ($search||$status||$filter): ?>
                         No loans match your filters.
@@ -266,6 +267,15 @@ $isAwaitingApprovalView = ($status === 'pending_approval');
                             <?= daysLabel($days) ?>
                         <?php else: ?>
                             <span class="text-muted"><?= date('d M Y', strtotime($l['due_date'])) ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="d-none d-xl-table-cell small">
+                        <?php if (!empty($l['journal_entry_id']) && !empty($l['disbursement_method'])): ?>
+                            <span class="badge bg-success-subtle text-success"><?= htmlspecialchars($l['disbursement_method']) ?></span>
+                        <?php elseif (in_array($l['status'], ['active','overdue','completed','defaulted'], true)): ?>
+                            <span class="badge bg-secondary-subtle text-secondary">Unclassified / Historical</span>
+                        <?php else: ?>
+                            <span class="text-muted">—</span>
                         <?php endif; ?>
                     </td>
                     <td class="text-center">

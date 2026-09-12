@@ -14,7 +14,7 @@ $loanData = $preLoan ?? null;
         <h1 class="h3 mb-1 fw-bold text-gray-800">
             <i class="bi bi-arrow-down-circle-fill me-2" style="color:var(--brand-orange)"></i>Record Repayment
         </h1>
-        <p class="text-muted mb-0 small">Receipt: <strong style="color:var(--brand-orange)"><?= htmlspecialchars($repaymentNumber) ?></strong></p>
+        <p class="text-muted mb-0 small">Receipt: <strong style="color:var(--ink)"><?= htmlspecialchars($repaymentNumber) ?></strong></p>
     </div>
     <a href="<?=$base?>?page=repayments" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left me-1"></i>Back
@@ -24,6 +24,7 @@ $loanData = $preLoan ?? null;
 <form id="repayForm" method="POST" action="<?= $formAction ?>" novalidate>
 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
 <input type="hidden" name="member_id" id="hiddenMemberId" value="<?= (int)($repayment['member_id'] ?? $loanData['member_id'] ?? 0) ?>">
+<input type="hidden" name="submission_token" value="<?= htmlspecialchars($submissionToken ?? '') ?>">
 
 <div class="row g-4">
 <div class="col-lg-8">
@@ -110,7 +111,7 @@ $loanData = $preLoan ?? null;
                         Amount Paid (Shs) <span class="text-danger">*</span>
                     </label>
                     <div class="input-group">
-                        <span class="input-group-text fw-bold" style="color:var(--brand-orange)">Shs</span>
+                        <span class="input-group-text fw-bold" style="color:var(--slate)">Shs</span>
                         <input type="number" id="amount_paid" name="amount_paid"
                                step="0.01" min="0.01"
                                class="form-control<?= $cls('amount_paid') ?>"
@@ -129,10 +130,14 @@ $loanData = $preLoan ?? null;
                     </label>
                     <select id="payment_method" name="payment_method"
                             class="form-select<?= $cls('payment_method') ?>" required>
+                        <option value="" <?= ($v('payment_method','')==='')?'selected':'' ?> disabled>Select payment source</option>
                         <?php foreach ($methods as $pm): ?>
-                        <option value="<?=$pm?>" <?= ($v('payment_method','Cash')===$pm)?'selected':'' ?>><?=$pm?></option>
+                        <option value="<?=$pm?>" <?= ($v('payment_method','')===$pm)?'selected':'' ?>><?=$pm?></option>
                         <?php endforeach; ?>
                     </select>
+                    <?php if ($err('payment_method')): ?>
+                    <div class="text-danger small mt-1"><?= htmlspecialchars($err('payment_method')) ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Penalty Payment (Stage 17 Part C) -->
@@ -200,12 +205,12 @@ $loanData = $preLoan ?? null;
     <div class="card mb-3" style="border:1px solid rgba(244,121,32,.3);">
         <div class="card-header d-flex align-items-center gap-2" style="background:rgba(244,121,32,.1)">
             <i class="bi bi-receipt" style="color:var(--brand-orange)"></i>
-            <h6 class="mb-0 fw-semibold" style="color:var(--brand-orange)">Payment Summary</h6>
+            <h6 class="mb-0 fw-semibold" style="color:var(--ink)">Payment Summary</h6>
         </div>
         <div class="card-body p-4">
             <dl class="row mb-0 small">
                 <dt class="col-7 text-muted">Receipt No.</dt>
-                <dd class="col-5 fw-semibold" style="color:var(--brand-orange)"><?= htmlspecialchars($repaymentNumber) ?></dd>
+                <dd class="col-5 fw-semibold" style="color:var(--ink)"><?= htmlspecialchars($repaymentNumber) ?></dd>
                 <dt class="col-7 text-muted">Loan No.</dt>
                 <dd class="col-5" id="sumLoanNo"><?= $loanData ? htmlspecialchars($loanData['loan_number']) : '—' ?></dd>
                 <dt class="col-7 text-muted">Member</dt>

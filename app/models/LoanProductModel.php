@@ -537,7 +537,7 @@ class LoanProductModel extends Model
             // ── Interest Only Period (monthly) ────────────────────
             for ($m = 1; $m <= $interestOnlyMonths; $m++) {
                 $installmentNo++;
-                $dueDate = date('Y-m-d', strtotime("+{$m} months", strtotime($startDate)));
+                $dueDate = LoanModel::addCalendarMonths($startDate, $m);
                 $monthCovered = date('M Y', strtotime($dueDate));
 
                 $this->db->prepare(
@@ -552,7 +552,7 @@ class LoanProductModel extends Model
             }
 
             // ── Weekly Principal + Interest Recovery (last 2 months) ──
-            $weekStartDate = date('Y-m-d', strtotime("+{$interestOnlyMonths} months", strtotime($startDate)));
+            $weekStartDate = LoanModel::addCalendarMonths($startDate, $interestOnlyMonths);
 
             for ($w = 1; $w <= $recoveryWeeks; $w++) {
                 $installmentNo++;
@@ -582,7 +582,13 @@ class LoanProductModel extends Model
             )->execute([$interestOnlyMonths, $recoveryWeeks, $loanId]);
 
         } catch (PDOException $e) {
+            // Rethrown (Stage — Loan Schedule & Due-Date Integrity
+            // Remediation) so the caller's transaction (LoanModel::
+            // disburse(), which now generates the authoritative schedule
+            // inside its own transaction) rolls back completely rather
+            // than leaving a partial schedule.
             error_log('generateBusinessBoostSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            throw $e;
         }
     }
 

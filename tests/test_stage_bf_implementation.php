@@ -353,6 +353,7 @@ $_POST = [];
 $validInput = callCollect($controllerInstance, $collectMethod, [
     'amount' => '500000', 'effective_date' => '2026-09-11',
     'period_from' => '2026-05-01', 'period_to' => '2026-09-11',
+    'posting_mode' => 'historical_only', 'historical_only_reason' => 'Test reason.',
 ], 1, 1);
 check('T14a: valid Period From/To range is accepted', $validInput['notes'] !== '');
 check('T14a: generated description mentions both dates', str_contains($validInput['notes'], '01 May 2026') && str_contains($validInput['notes'], '11 September 2026'), $validInput['notes']);
@@ -403,6 +404,7 @@ check('T14e: a syntactically invalid Period From date is rejected', $invalidDate
 $sameDayInput = callCollect($controllerInstance, $collectMethod, [
     'amount' => '10000', 'effective_date' => '2026-09-11',
     'period_from' => '2026-09-11', 'period_to' => '2026-09-11',
+    'posting_mode' => 'historical_only', 'historical_only_reason' => 'Test reason.',
 ], 1, 1);
 check('T14f: Period From equal to Period To is accepted (not treated as reversed)', $sameDayInput['notes'] !== '');
 
@@ -421,6 +423,7 @@ $m14 = makeMember($memberModel, $ADMIN, 'T14');
 $e2eInput = callCollect($controllerInstance, $collectMethod, [
     'amount' => '500000', 'effective_date' => '2026-09-11',
     'period_from' => '2026-05-01', 'period_to' => '2026-09-11',
+    'posting_mode' => 'historical_only', 'historical_only_reason' => 'Test reason.',
 ], $m14['member_id'], $m14['account_id']);
 $e2eResult = $savingsModel->createBroughtForward($e2eInput, $ADMIN);
 $e2eRow = $savingsModel->find($e2eResult['id']);

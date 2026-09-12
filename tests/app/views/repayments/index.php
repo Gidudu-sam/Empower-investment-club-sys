@@ -127,7 +127,7 @@ function pmBadge(string $m): string {
                 <tr>
                     <td class="ps-3">
                         <a href="<?=$base?>?page=repayment-view&id=<?=$r['id']?>"
-                           class="fw-semibold text-decoration-none" style="color:var(--brand-orange)">
+                           class="fw-semibold text-decoration-none" style="color:var(--ink)">
                             <?= htmlspecialchars($r['repayment_number']) ?>
                         </a>
                     </td>

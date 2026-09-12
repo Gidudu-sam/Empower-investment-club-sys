@@ -4,10 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Loan Statement — <?= htmlspecialchars($loan['loan_number']) ?> · <?= htmlspecialchars($loan['first_name'].' '.$loan['last_name']) ?></title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 10pt;
     color: #1a1a1a;
     background: #e8eaf0;
@@ -38,17 +41,17 @@ body {
 }
 .stmt-header {
     padding: 22px 28px 16px;
-    border-bottom: 4px solid #F47920;
+    border-bottom: 4px solid #B8892B;
     display: flex; align-items: center; justify-content: space-between;
     background: #fff; position: relative; z-index: 1;
 }
 .stmt-logo-area { display: flex; align-items: center; gap: 14px; }
 .stmt-logo-img { height: 52px; width: 52px; object-fit: contain; }
-.stmt-logo-divider { width: 2px; height: 44px; background: #e2e8f0; }
+.stmt-logo-divider { width: 2px; height: 44px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.3rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #F47920; }
-.stmt-brand-tagline { font-size: 0.68rem; color: #64748b; font-style: italic; margin-top: 2px; }
-.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #334155; line-height: 1.7; }
+.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-tagline { font-size: 0.68rem; color: #6E7689; font-style: italic; margin-top: 2px; }
+.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
 
 .stmt-body { padding: 20px 24px; position: relative; z-index: 1; }
@@ -61,31 +64,31 @@ body {
 .member-info-box {
     display: grid; grid-template-columns: 1fr 1fr;
     gap: 8px 24px; font-size: 0.82rem; margin-bottom: 22px;
-    background: #f8f9fc; padding: 14px 18px; border-radius: 6px; border: 1px solid #e2e8f0;
+    background: #f8f9fc; padding: 14px 18px; border-radius: 6px; border: 1px solid #E5E7F0;
 }
 .member-info-row {
     display: grid; grid-template-columns: 150px 1fr; gap: 0 12px;
-    align-items: baseline; padding-bottom: 4px; border-bottom: 1px dashed #e2e8f0;
+    align-items: baseline; padding-bottom: 4px; border-bottom: 1px dashed #E5E7F0;
 }
 .member-info-row:last-child { border-bottom: none; padding-bottom: 0; }
-.member-info-label { color: #64748b; font-weight: 500; white-space: nowrap; }
-.member-info-val { color: #1e293b; font-weight: 600; }
+.member-info-label { color: #6E7689; font-weight: 500; white-space: nowrap; }
+.member-info-val { color: #171B2E; font-weight: 600; }
 
 .stmt-section-title {
     font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-bottom: 10px; border-bottom: 2px solid #1B2B6B; padding-bottom: 3px;
 }
 
 .stmt-table {
-    width: 100%; border-collapse: collapse; font-size: 0.68rem; margin-bottom: 24px; border: 1px solid #cbd5e1;
+    width: 100%; border-collapse: collapse; font-size: 0.68rem; margin-bottom: 24px; border: 1px solid #E5E7F0;
 }
 .stmt-table th {
     background: #1B2B6B; color: #fff; text-align: center; padding: 6px 4px;
-    font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border: 1px solid #cbd5e1;
+    font-size: 0.58rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border: 1px solid #E5E7F0;
 }
 .stmt-table th.right { text-align: right; }
 .stmt-table th.left { text-align: left; }
 .stmt-table th.center { text-align: center; }
-.stmt-table td { padding: 5px 4px; border: 1px solid #cbd5e1; vertical-align: middle; }
+.stmt-table td { padding: 5px 4px; border: 1px solid #E5E7F0; vertical-align: middle; }
 .stmt-table tr:nth-child(even) td { background: #f8f9fc; }
 .stmt-table .row-disbursement { background: #fef3c7 !important; font-weight: 600; }
 .stmt-table .row-closing { background: #e0f2fe !important; font-weight: 700; }
@@ -101,27 +104,27 @@ body {
 .amount-closing { color: #1e3a8a; font-weight: 900; font-size: 0.95rem; }
 
 .summary-card {
-    border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #fdfdfd; margin-bottom: 24px; font-size: 0.82rem;
+    border: 1px solid #E5E7F0; border-radius: 6px; overflow: hidden; background: #fdfdfd; margin-bottom: 24px; font-size: 0.82rem;
 }
 .summary-card-header {
     background: #1B2B6B; color: #fff; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; padding: 8px 16px;
 }
 .summary-card-body { padding: 16px 18px; }
 .summary-highlights {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 2px solid #e2e8f0;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 2px solid #E5E7F0;
 }
 .summary-highlight-item {
-    background: #f8f9fc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; text-align: center;
+    background: #f8f9fc; border: 1px solid #E5E7F0; border-radius: 6px; padding: 10px; text-align: center;
 }
-.summary-highlight-label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+.summary-highlight-label { font-size: 0.68rem; color: #6E7689; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
 .summary-highlight-value { font-size: 1.05rem; font-weight: 800; color: #1B2B6B; }
 .summary-highlight-value.danger { color: #dc2626; font-size: 1.15rem; }
 
 .summary-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 0.82rem; }
 .summary-row { display: grid; grid-template-columns: 160px 1fr; gap: 0 12px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f1f5f9; }
 .summary-row:last-child { border-bottom: none; }
-.summary-label { color: #475569; white-space: nowrap; }
-.summary-val { font-weight: 600; color: #1e293b; }
+.summary-label { color: #6B7280; white-space: nowrap; }
+.summary-val { font-weight: 600; color: #171B2E; }
 
 .summary-total-bar {
     display: flex; justify-content: space-between; padding-top: 10px; margin-top: 12px; border-top: 2px solid #1B2B6B; font-size: 1.05rem; font-weight: 900;
@@ -130,13 +133,13 @@ body {
 .summary-total-bar .summary-val { color: #dc2626; font-size: 1.2rem; }
 
 .stmt-footer-note {
-    text-align: center; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #cbd5e1; font-size: 0.75rem; color: #475569; line-height: 1.6;
+    text-align: center; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #E5E7F0; font-size: 0.75rem; color: #6B7280; line-height: 1.6;
 }
 .stmt-footer-note p.disclaimer { font-style: italic; margin-bottom: 3px; }
 .stmt-footer-note p.end-mark { font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-top: 4px; }
 
 .stmt-footer-bar {
-    padding: 12px 28px; border-top: 3px solid #F47920;
+    padding: 12px 28px; border-top: 3px solid #B8892B;
     display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff;
 }
 
@@ -279,13 +282,13 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
                         <td>Loan Disbursement</td>
                         <td><?= htmlspecialchars($loan['loan_number']) ?></td>
                         <td class="text-right"><?= number_format($loan['loan_amount'], 2) ?></td>
-                        <td class="text-right text-muted" style="color:#94a3af;">—</td>
+                        <td class="text-right text-muted" style="color:#6E7689;">—</td>
                         <td class="text-right amount-balance"><?= number_format($loan['loan_amount'], 2) ?></td>
                     </tr>
 
                     <?php if (empty($repayments)): ?>
                     <tr>
-                        <td colspan="6" class="text-center" style="padding:14px;color:#64748b;font-style:italic;">
+                        <td colspan="6" class="text-center" style="padding:14px;color:#6E7689;font-style:italic;">
                             No repayments recorded yet for this loan.
                         </td>
                     </tr>
@@ -295,7 +298,7 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
                             <td class="text-center"><?= htmlspecialchars($r['payment_date']) ?></td>
                             <td>Monthly Loan Repayment (<?= htmlspecialchars($r['payment_method']) ?>)</td>
                             <td><?= htmlspecialchars($r['repayment_number']) ?></td>
-                            <td class="text-right text-muted" style="color:#94a3af;">—</td>
+                            <td class="text-right text-muted" style="color:#6E7689;">—</td>
                             <td class="text-right amount-credit"><?= number_format($r['amount_paid'], 2) ?></td>
                             <td class="text-right amount-balance"><?= number_format($r['balance_after'], 2) ?></td>
                         </tr>
@@ -381,13 +384,13 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
         </div>
 
         <!-- ── GENERATED-BY LINE ─────────────────────────── -->
-        <div style="font-size:0.7rem;color:#334155;font-style:italic;padding:6px 28px 10px;">
+        <div style="font-size:0.7rem;color:#6B7280;font-style:italic;padding:6px 28px 10px;">
             This statement has been generated from Empower Investment Club Management System.
         </div>
 
         <div class="stmt-footer-bar">
             <img src="<?= APP_URL ?>/public/images/logo.png" alt="" style="height:20px;opacity:.35;">
-            <span style="font-size:.72rem;color:#9ca3af;font-style:italic;letter-spacing:.04em;">Unleash your financial potential</span>
+            <span style="font-size:.72rem;color:#6E7689;font-style:italic;letter-spacing:.04em;">Unleash your financial potential</span>
         </div>
     </div>
 </div>

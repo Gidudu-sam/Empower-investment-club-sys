@@ -425,6 +425,102 @@ class MemberModel extends Model
     }
 
     // ----------------------------------------------------------------
+    // Birthday query
+    //
+    // Fetches all active members whose date_of_birth falls on the given
+    // month and day (year is intentionally ignored -- a member born in
+    // 1985 still has their birthday on September 12 every year).
+    //
+    // Leap-day (Feb 29): on non-leap years we send on Feb 28 by treating
+    // the target date as the last valid date for the month when the
+    // resolved day does not exist (handled via LAST_DAY logic at the
+    // application level -- the caller passes an already-resolved date).
+    // See BirthdayController::resolveTargetDate() for the adjustment.
+    //
+    // Filters:
+    //   status = 'active'             -- dormant + inactive excluded
+    //   date_of_birth IS NOT NULL     -- members with no DOB excluded
+    //   email IS NOT NULL AND != ''   -- members with no email excluded
+    //
+    // The $date parameter accepts 'YYYY-MM-DD'; defaults to today.
+    // ----------------------------------------------------------------
+
+    /**
+     * Return active members whose birthday (month+day) matches $date.
+     *
+     * @param  string $date  Target date 'YYYY-MM-DD' (defaults to today)
+     * @return array<int,array<string,mixed>>  Rows from members table
+     */
+    public function getTodaysBirthdays(string $date = ''): array
+    {
+        if ($date === '') {
+            $date = date('Y-m-d');
+        }
+        // Validate format to prevent SQL injection via the date string
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return [];
+        }
+        [$year, $month, $day] = explode('-', $date);
+
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT * FROM `members`
+                 WHERE `status` = 'active'
+                   AND `date_of_birth` IS NOT NULL
+                   AND `email` IS NOT NULL AND `email` != ''
+                   AND MONTH(`date_of_birth`) = :m
+                   AND DAY(`date_of_birth`)   = :d
+                 ORDER BY `last_name` ASC, `first_name` ASC"
+            );
+            $stmt->execute([':m' => (int)$month, ':d' => (int)$day]);
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Return active members whose birthdays fall within the next $days
+     * calendar days (exclusive of today).  Used for the "Upcoming
+     * Birthdays" panel on the admin dashboard.
+     *
+     * @param  int $days  Number of days ahead to look (1–30)
+     * @return array<int,array<string,mixed>>
+     */
+    public function getUpcomingBirthdays(int $days = 7): array
+    {
+        $days = max(1, min(30, $days));
+        try {
+            // Build a list of (month,day) pairs for the next $days days
+            // and query with an IN on a derived expression.  This avoids
+            // a full table scan with a function on every row by limiting
+            // the set first, and correctly wraps across year boundaries
+            // (e.g. Dec 30 + 7 days = Jan 6 next year).
+            $pairs = [];
+            for ($i = 1; $i <= $days; $i++) {
+                $d        = new DateTime('today');
+                $d->modify("+{$i} days");
+                $pairs[]  = '(MONTH(`date_of_birth`)=' . (int)$d->format('m')
+                          . ' AND DAY(`date_of_birth`)=' . (int)$d->format('d') . ')';
+            }
+            $whereOr = implode(' OR ', $pairs);
+
+            $stmt = $this->db->query(
+                "SELECT *, DATE_FORMAT(`date_of_birth`, '%m-%d') AS bday_mmdd
+                 FROM `members`
+                 WHERE `status` = 'active'
+                   AND `date_of_birth` IS NOT NULL
+                 AND ({$whereOr})
+                 ORDER BY DATE_FORMAT(`date_of_birth`, '%m-%d') ASC,
+                          `last_name` ASC"
+            );
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+
+    // ----------------------------------------------------------------
     // Expanded relationship list (static helper)
     // ----------------------------------------------------------------
 

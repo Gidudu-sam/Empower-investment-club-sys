@@ -59,6 +59,33 @@ class LoanModel extends Model
      *  ever posting an unapproved loan, regardless of which caller reaches it. */
     private const NOT_YET_APPROVED_STATUSES = ['draft', 'pending_approval', 'rejected'];
 
+    /**
+     * Stage — Loan Disbursement Funding Source: the methods a real
+     * disbursement may claim as its funding source -- deliberately
+     * excludes 'Other' (no real, identifiable Cash/Bank/MoMo account
+     * behind it), mirroring the identical exclusion already established
+     * for Balance Brought Forward's verified-asset methods
+     * (SavingsModel::BF_VERIFIED_ASSET_METHODS). Reuses the same
+     * PAYMENT_ACCOUNTS map below, not a duplicate one.
+     */
+    public const LOAN_DISBURSEMENT_METHODS = ['Cash', 'MTN Mobile Money', 'Airtel Money', 'Bank Transfer', 'Cheque'];
+
+    /**
+     * Posts the GL side of a loan's disbursement: Dr Loans to Members /
+     * Cr <disbursement_method account>, for the actual disbursed principal
+     * (loan_amount) only -- never interest, fees, or the full payable
+     * total. Idempotent: if this loan already has a journal_entry_id,
+     * returns that reference instead of posting again.
+     *
+     * disbursement_method is READ from the loan row, never defaulted here
+     * -- the row must already carry a valid, explicitly-chosen value by
+     * the time this method runs. disburse() (below) is the normal path
+     * and always sets it, fresh, in the same transaction, immediately
+     * before calling this. There is deliberately no fallback to 'Cash' or
+     * any other value: a loan whose disbursement_method is empty or not
+     * one of LOAN_DISBURSEMENT_METHODS is refused outright, rather than
+     * silently posted against a guessed account.
+     */
     public function postDisbursement(int $loanId, int $userId): array
     {
         $loan = $this->find($loanId);
@@ -74,7 +101,13 @@ class LoanModel extends Model
             return ['journal_entry_id' => (int)$loan['journal_entry_id'], 'entry_number' => $je->fetchColumn(), 'created' => false];
         }
 
-        $method = $loan['disbursement_method'] ?: 'Cash';
+        $method = (string)($loan['disbursement_method'] ?? '');
+        if (!in_array($method, self::LOAN_DISBURSEMENT_METHODS, true)) {
+            throw new InvalidArgumentException(
+                "Loan {$loan['loan_number']} has no valid funding source on record (Cash, Bank, or Mobile Money must be " .
+                "explicitly selected at disbursement — see the Disburse action)."
+            );
+        }
         $creditAccountId = self::PAYMENT_ACCOUNTS[$method] ?? 7;
         $creditAccount = (new AccountModel())->findActive($creditAccountId);
         if (!$creditAccount) {
@@ -213,15 +246,21 @@ class LoanModel extends Model
      * the loan to 'active'. postDisbursement() independently re-checks
      * status is not one of the not-yet-approved statuses, so this is
      * defense in depth, not the only enforcement point.
+     *
+     * Stage — Loan Disbursement Funding Source: $disbursementMethod is now
+     * a required parameter, explicitly chosen by the person recording the
+     * actual disbursement -- it is never inferred from the loan's
+     * creation-time disbursement_method value (which may be stale, set by
+     * a different, lower-privileged user weeks earlier, or left at its
+     * form default). This method overwrites loans.disbursement_method
+     * with the freshly-supplied value, in the same atomic transaction, at
+     * the true moment the funds actually move -- reusing the existing
+     * column rather than adding a new one.
      */
-    public function disburse(int $id, int $userId): array
+    public function disburse(int $id, int $userId, string $disbursementMethod): array
     {
-        $loan = $this->find($id);
-        if (!$loan) {
-            throw new InvalidArgumentException("Loan id {$id} does not exist.");
-        }
-        if ($loan['status'] !== 'approved') {
-            throw new InvalidArgumentException("Only an approved loan can be disbursed (current status: {$loan['status']}).");
+        if (!in_array($disbursementMethod, self::LOAN_DISBURSEMENT_METHODS, true)) {
+            throw new InvalidArgumentException('Select the funding source: Cash, Bank, or Mobile Money.');
         }
 
         $ownTransaction = !$this->db->inTransaction();
@@ -229,10 +268,59 @@ class LoanModel extends Model
             $this->db->beginTransaction();
         }
         try {
-            $result = $this->postDisbursement($id, $userId);
+            // Stage — Loan Schedule & Due-Date Integrity Remediation
+            // (Remediation C/D): the existence/status check is now done
+            // HERE, under a row lock, INSIDE this transaction -- not via
+            // an earlier, unlocked find() before the transaction began.
+            // That earlier pattern left a genuine TOCTOU race: two
+            // concurrent disburse() calls could both read status=
+            // 'approved' before either committed, and both would then
+            // proceed through schedule generation and journal posting
+            // (only saved from a double journal entry by
+            // postDisbursement()'s own separate idempotency check, which
+            // is a lucky side effect, not a designed guarantee). Locking
+            // here means the second concurrent caller blocks until the
+            // first commits, then correctly sees status='active' and is
+            // cleanly rejected -- closing the race at its actual source.
+            $lockStmt = $this->db->prepare("SELECT * FROM `loans` WHERE id = ? FOR UPDATE");
+            $lockStmt->execute([$id]);
+            $loan = $lockStmt->fetch();
+            if (!$loan) {
+                throw new InvalidArgumentException("Loan id {$id} does not exist.");
+            }
+            if ($loan['status'] !== 'approved') {
+                throw new InvalidArgumentException("Only an approved loan can be disbursed (current status: {$loan['status']}).");
+            }
+
+            // Stage — Loan Schedule & Due-Date Integrity Remediation
+            // (Finding 1, approved business rule: schedule anchor =
+            // actual successful disbursement date). disbursement_date is
+            // the real, non-backdatable moment of THIS call -- never a
+            // client-suppliable value, never the loan's issue_date.
+            $disbursementDate = date('Y-m-d');
             $this->db->prepare(
-                "UPDATE `loans` SET status = 'active', disbursed_by = ?, disbursed_at = NOW() WHERE id = ?"
-            )->execute([$userId, $id]);
+                "UPDATE `loans` SET disbursement_method = ?, disbursement_date = ? WHERE id = ?"
+            )->execute([$disbursementMethod, $disbursementDate, $id]);
+
+            // The authoritative installment schedule is generated HERE,
+            // inside this same transaction, anchored to the real
+            // disbursement date -- not at loan-creation/issue_date as
+            // before. A failure here (including the schedule-total
+            // invariant check inside it) aborts the entire disbursement:
+            // no schedule, no journal, no status change survive.
+            $this->generateAuthoritativeSchedule($id, $disbursementDate);
+
+            $result = $this->postDisbursement($id, $userId);
+
+            // loans.due_date was only ever an estimate before disbursement
+            // (computed at creation from issue_date); refresh it from the
+            // real disbursement date now, using the same calendar-safe
+            // arithmetic the schedule itself uses.
+            $freshLoan = $this->find($id);
+            $newDueDate = self::addCalendarMonths($disbursementDate, (int)$freshLoan['loan_period_months']);
+            $this->db->prepare(
+                "UPDATE `loans` SET status = 'active', disbursed_by = ?, disbursed_at = NOW(), due_date = ? WHERE id = ?"
+            )->execute([$userId, $newDueDate, $id]);
 
             if ($ownTransaction) {
                 $this->db->commit();
@@ -243,6 +331,133 @@ class LoanModel extends Model
                 $this->db->rollBack();
             }
             throw $e;
+        }
+    }
+
+    /**
+     * Generates the loan's ONE authoritative installment schedule,
+     * anchored to $disbursementDate -- mirrors the dispatch logic
+     * LoanController::store() used to run at loan-creation time (moved
+     * here in full, unchanged internally, per the approved schedule-
+     * anchor business rule: schedule anchor = actual successful
+     * disbursement date). Reads everything it needs from the already-
+     * persisted loan row rather than a transient form array, since
+     * loan-creation already stored loan_amount/interest_amount/
+     * total_payable/repayment_frequency/interest_mode/grace_period_months
+     * on the loans row itself.
+     *
+     * Normal callers: disburse() (the authoritative path, inside its own
+     * transaction -- a failure here aborts the whole disbursement) and
+     * LoanController::printSchedule()'s narrow, role-gated recovery
+     * fallback for an already-disbursed loan that anomalously has no
+     * schedule rows (e.g. legacy data). Public so both can reach it;
+     * never invoked for a loan that has not yet been disbursed.
+     */
+    public function generateAuthoritativeSchedule(int $loanId, string $disbursementDate): void
+    {
+        $loan = $this->find($loanId);
+        if (!$loan) {
+            throw new InvalidArgumentException("Loan id {$loanId} does not exist.");
+        }
+
+        $repFreq     = $loan['repayment_frequency'] ?? 'monthly';
+        $intMode     = $loan['interest_mode'] ?? 'percentage';
+        $fixedAmt    = (float)($loan['fixed_interest_amount'] ?? 0);
+        $months      = (int)$loan['loan_period_months'];
+        $graceMonths = (int)($loan['grace_period_months'] ?? 0);
+
+        // Same authoritative source LoanController::store() always used
+        // for this decision -- never guessed, never re-derived from a
+        // different signal.
+        $repType = 'installment';
+        try {
+            $stmt = $this->db->prepare("SELECT repayment_type FROM loan_types WHERE id=?");
+            $stmt->execute([(int)$loan['loan_type_id']]);
+            $repType = $stmt->fetchColumn() ?: 'installment';
+        } catch (PDOException $e) {}
+
+        if ($repFreq === 'weekly' && $intMode === 'fixed' && $fixedAmt > 0) {
+            $this->generateWeeklyInterestSchedule($loanId, (float)$loan['loan_amount'], $fixedAmt, $months, $disbursementDate);
+        } elseif ($repType === 'interest_only') {
+            // Business loan: the officer's up-front choice of variant
+            // (interest_only "Standard" vs business_boost) was captured
+            // and persisted onto loans.repayment_method at creation time
+            // (LoanController::store()) -- read it back here rather than
+            // re-reading $_POST, which no longer exists at disbursement.
+            require_once APP_PATH . '/models/LoanProductModel.php';
+            $productModel = new LoanProductModel();
+            $finalRate = (float)$loan['interest_rate'];
+
+            if (($loan['repayment_method'] ?? '') === 'business_boost') {
+                $weeks = max(1, $months * 4);
+                $this->generateWeeklyInstallmentSchedule(
+                    $loanId, (float)$loan['loan_amount'], (float)$loan['interest_amount'],
+                    (float)$loan['total_payable'], $months, $disbursementDate, 0
+                );
+                $this->update($loanId, [
+                    'monthly_installment'      => round((float)$loan['total_payable'] / $weeks, 2),
+                    'interest_only_months'     => 0,
+                    'principal_recovery_weeks' => $weeks,
+                ]);
+            } else {
+                $interestOnlyMonths = max(1, $months - 2);
+                $recoveryWeeks = 8;
+                $productModel->generateBusinessBoostSchedule(
+                    $loanId, (float)$loan['loan_amount'], $finalRate,
+                    $months, $interestOnlyMonths, $recoveryWeeks, $disbursementDate
+                );
+                // Recalculate totals with the correct rate/weekly rounding
+                // (identical recalculation LoanController::store() always
+                // performed at this point, just relocated).
+                $boostCalc = $productModel->calculateBusinessBoost(
+                    (float)$loan['loan_amount'], $finalRate, $months, $interestOnlyMonths, $recoveryWeeks
+                );
+                $this->update($loanId, [
+                    'total_payable'            => $boostCalc['total_payable'],
+                    'outstanding'              => $boostCalc['total_payable'],
+                    'interest_amount'          => $boostCalc['total_interest'],
+                    // generateBusinessBoostSchedule() itself unconditionally
+                    // writes repayment_method='business_boost' -- this
+                    // update, running after it, is what actually determines
+                    // the final, correctly-labeled stored value for the
+                    // "Interest Only (Standard)" variant (unchanged from
+                    // the original LoanController::store() behavior).
+                    'repayment_method'         => 'interest_only',
+                    'interest_only_months'     => $interestOnlyMonths,
+                    'principal_recovery_weeks' => $recoveryWeeks,
+                ]);
+            }
+        } elseif ($repFreq === 'weekly' && $months > 0) {
+            $this->generateWeeklyInstallmentSchedule(
+                $loanId, (float)$loan['loan_amount'], (float)$loan['interest_amount'],
+                (float)$loan['total_payable'], $months, $disbursementDate, $graceMonths * 4
+            );
+        } elseif ($months > 0 && (float)$loan['monthly_installment'] > 0) {
+            $this->generateInstallments(
+                $loanId, (float)$loan['monthly_installment'], $months, $disbursementDate, $graceMonths,
+                $months > 0 ? round((float)$loan['interest_amount'] / $months, 2) : 0.0,
+                (float)$loan['loan_amount']
+            );
+        }
+
+        // Stage 9.2's own schedule-total invariant, relocated here
+        // unchanged: the generated schedule must sum exactly to the
+        // loan's own total_payable (re-fetched fresh, since the
+        // business-loan branch above may have just corrected it).
+        // Throws (rather than the old create()-time compensating
+        // delete()) so disburse()'s transaction rolls back completely --
+        // deleting an already-approved, already-disbursement-attempted
+        // loan would be far more destructive than aborting the attempt.
+        $freshLoan = $this->find($loanId);
+        $scheduledTotal = (float)$this->db->query(
+            "SELECT COALESCE(SUM(amount_due),0) FROM loan_installments WHERE loan_id=" . (int)$loanId
+        )->fetchColumn();
+        $expectedTotal = (float)($freshLoan['total_payable'] ?? 0);
+        if ($expectedTotal > 0 && abs($scheduledTotal - $expectedTotal) > 0.01) {
+            throw new RuntimeException(
+                "Generated schedule (Shs {$scheduledTotal}) does not match loan total payable (Shs {$expectedTotal}) " .
+                "for loan {$loanId} -- disbursement aborted, nothing was posted."
+            );
         }
     }
 
@@ -445,6 +660,39 @@ class LoanModel extends Model
     }
 
     // ================================================================
+    // CALENDAR-SAFE MONTH ARITHMETIC
+    // (Stage — Loan Schedule & Due-Date Integrity Remediation)
+    // ================================================================
+
+    /**
+     * Add $months calendar months to $date without PHP's strtotime()/
+     * DateTime::modify("+N months") end-of-month overflow (e.g.
+     * 2026-01-31 + 1 month naively becomes 2026-03-03, silently skipping
+     * February). Approved convention: if the anchor date is the last
+     * calendar day of its month, every target date is the last calendar
+     * day of ITS month too; otherwise the anchor's day-of-month is
+     * preserved and clamped to the target month's final day when the
+     * target month is shorter. Used by every MONTHLY schedule generator;
+     * weekly generators use a fixed 7-day step and are deliberately left
+     * untouched -- they have no month-length ambiguity to begin with.
+     */
+    public static function addCalendarMonths(string $date, int $months): string
+    {
+        $dt = new DateTime($date);
+        $day = (int)$dt->format('j');
+        $isLastDayOfMonth = ((int)$dt->format('t') === $day);
+
+        $dt->modify('first day of this month');
+        $dt->modify("{$months} months");
+
+        $targetLastDay = (int)$dt->format('t');
+        $targetDay = $isLastDayOfMonth ? $targetLastDay : min($day, $targetLastDay);
+        $dt->setDate((int)$dt->format('Y'), (int)$dt->format('n'), $targetDay);
+
+        return $dt->format('Y-m-d');
+    }
+
+    // ================================================================
     // INSTALLMENT SCHEDULE GENERATION
     // ================================================================
 
@@ -513,12 +761,31 @@ class LoanModel extends Model
             $principalRunning = 0.0;
 
             for ($i = 1; $i <= $periodMonths; $i++) {
-                $dueDate = date('Y-m-d', strtotime("+{$i} months", strtotime($startDate)));
+                $dueDate = self::addCalendarMonths($startDate, $i);
                 $monthCovered = date('M Y', strtotime($dueDate));
                 $isGrace = $splitKnown && $graceMonths > 0 && $i <= $graceMonths;
                 $isLast  = ($i === $periodMonths);
 
                 if ($splitKnown) {
+                    // Stage — Loan Schedule & Due-Date Integrity Remediation
+                    // (Finding 4, resolved as Option B -- documentation
+                    // only, no calculation change, per explicit approval):
+                    // principal_due=0 / interest_due=full here describes
+                    // what is CONTRACTUALLY BILLED for a grace-period
+                    // installment -- the grace-period product feature
+                    // genuinely defers principal recovery, so the member
+                    // really does owe interest only this period. This is
+                    // NOT a claim about how a received payment will be
+                    // recognized in the general ledger -- that recognition
+                    // is decided solely, and independently, by
+                    // RepaymentModel::recordRepayment()'s loan-wide
+                    // proportional formula (interest_amount/total_payable),
+                    // which is the one authoritative allocation rule for
+                    // GL purposes and is unchanged by this stage. Do not
+                    // read principal_due/interest_due on this row as a
+                    // revenue-recognition forecast; they describe billing
+                    // composition only. See the remediation report for the
+                    // full grace-period reconciliation discussion.
                     $interestDue  = $monthlyInterest;
                     $principalDue = $isGrace ? 0.0 : $principalPerRecoveryMonth;
                     $amountDue    = $isGrace ? $interestDue : round($interestDue + $principalDue, 2);
@@ -551,10 +818,16 @@ class LoanModel extends Model
                 $stmt->execute([$loanId, $i, $dueDate, $monthCovered, $principalDue, $interestDue, $amountDue, $remaining, $isGrace ? 1 : 0]);
             }
         } catch (PDOException $e) {
-            // loan_installments is currently unreadable at the storage-engine
-            // level (see the Stage 7E structural-recovery report) -- surface
-            // this rather than silently pretending the schedule was generated.
+            // Stage — Loan Schedule & Due-Date Integrity Remediation: this
+            // used to log and silently continue (dating back to when
+            // loan_installments was storage-engine-corrupted -- Stage 7E;
+            // that has since been repaired and re-confirmed readable). It
+            // now rethrows so the caller's own transaction (disburse(),
+            // or the legacy import flow, both of which wrap this call in
+            // beginTransaction()/commit()) rolls back completely rather
+            // than leaving a partial schedule or an un-flagged failure.
             error_log('generateInstallments() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            throw $e;
         }
     }
 
@@ -631,7 +904,11 @@ class LoanModel extends Model
                 $stmt->execute([$loanId, $w, $dueDate, $weekCovered, $principalDue, $interestDue, $amountDue, $remaining, $isGrace ? 1 : 0]);
             }
         } catch (PDOException $e) {
+            // Rethrown (Stage — Loan Schedule & Due-Date Integrity
+            // Remediation) so the caller's transaction rolls back
+            // completely rather than leaving a partial schedule.
             error_log('generateWeeklyInstallmentSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            throw $e;
         }
     }
 
@@ -701,7 +978,11 @@ class LoanModel extends Model
             }
 
         } catch (PDOException $e) {
+            // Rethrown (Stage — Loan Schedule & Due-Date Integrity
+            // Remediation) so the caller's transaction rolls back
+            // completely rather than leaving a partial schedule.
             error_log('generateWeeklyInterestSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            throw $e;
         }
     }
 
@@ -973,8 +1254,26 @@ class LoanModel extends Model
     public function syncOverdueStatus(): void
     {
         try {
-            $this->db->exec("UPDATE `loans` SET status='overdue' WHERE status='active' AND due_date < CURDATE()");
+            // Stage — Loan Schedule & Due-Date Integrity Remediation
+            // (Finding 11, approved business rule): a loan is now
+            // considered overdue as soon as ANY of its scheduled
+            // installments is overdue, not only once the loan's own
+            // final due_date has passed -- the earlier, more accurate
+            // installment-level signal now also drives loan-level status.
+            // The original final-due-date rule is kept as a superset (a
+            // loan with no installment schedule at all -- a legitimate,
+            // schedule-less product -- still relies on it exactly as
+            // before; the EXISTS clause simply evaluates false there).
+            // Installments are synced FIRST so the loan-level check below
+            // sees up-to-date installment status.
             $this->syncOverdueInstallments();
+            $this->db->exec(
+                "UPDATE `loans` l SET status='overdue'
+                 WHERE l.status='active' AND (
+                     l.due_date < CURDATE()
+                     OR EXISTS (SELECT 1 FROM `loan_installments` li WHERE li.loan_id=l.id AND li.status='overdue')
+                 )"
+            );
         } catch (PDOException $e) {}
     }
 

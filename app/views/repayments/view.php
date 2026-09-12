@@ -45,7 +45,7 @@ $subtitle = htmlspecialchars($r['first_name'] . ' ' . $r['last_name'] . ' (' . $
 <div class="card mb-4">
     <div class="card-header d-flex align-items-center justify-content-between">
         <h6 class="mb-0 fw-semibold"><i class="bi bi-receipt me-2" style="color:var(--brand-orange)"></i>Payment Details</h6>
-        <span class="fw-bold" style="color:var(--brand-orange);font-size:1.1rem"><?= htmlspecialchars($r['repayment_number']) ?></span>
+        <span class="fw-bold" style="color:var(--ink);font-size:1.1rem"><?= htmlspecialchars($r['repayment_number']) ?></span>
     </div>
     <div class="card-body p-4">
         <div class="row g-4">

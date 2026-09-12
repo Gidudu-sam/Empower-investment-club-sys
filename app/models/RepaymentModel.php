@@ -1,5 +1,16 @@
 <?php
 /**
+ * Stage — Loan Repayment Interest Recognition & Submission Integrity:
+ * thrown when an INSERT into loan_repayments violates
+ * uk_repayments_submission_token -- i.e. this exact submission attempt
+ * (not merely "a similar payment") has already been recorded. Callers
+ * (RepaymentController) catch this specifically and redirect to the
+ * already-recorded repayment instead of showing a raw DB error or,
+ * worse, retrying and creating a second financial event.
+ */
+class DuplicateRepaymentSubmissionException extends RuntimeException {}
+
+/**
  * RepaymentModel — Multi-Product Loan Repayments
  */
 class RepaymentModel extends Model
@@ -56,6 +67,65 @@ class RepaymentModel extends Model
             $next = (int)($stmt->fetch()['max_seq'] ?? 0) + 1;
             return 'PAY-' . str_pad($next, 6, '0', STR_PAD_LEFT);
         } catch (PDOException $e) { return 'PAY-000001'; }
+    }
+
+    // ================================================================
+    // SUBMISSION-TOKEN IDEMPOTENCY (Stage — Repayment Interest
+    // Recognition & Submission Integrity)
+    //
+    // A fresh, server-generated token is embedded as a hidden field every
+    // time the repayment form is rendered (RepaymentController::add()).
+    // It is submitted back with the POST and inserted alongside the
+    // repayment row it protects. uk_repayments_submission_token (a real
+    // database-level UNIQUE constraint, not merely an application check)
+    // is the actual guarantee: two near-simultaneous requests for the
+    // SAME rendered form both race to INSERT the same token -- exactly
+    // one wins; the other's INSERT is rejected by MySQL itself before it
+    // can ever commit a second financial event, closing the race-
+    // condition gap a pure "SELECT first, then INSERT" check cannot
+    // close. A genuinely separate, legitimate repeat payment (the member
+    // pays the same amount again later) naturally gets its own fresh
+    // token, because the operator loads the Record Repayment form again
+    // for it -- this distinguishes "the same submission, twice" from
+    // "two real payments" without inspecting amount/date/method at all.
+    // ================================================================
+
+    /** The repayment already recorded for this exact submission token, if any. */
+    public function findBySubmissionToken(string $token): ?array
+    {
+        if ($token === '') {
+            return null;
+        }
+        $stmt = $this->db->prepare("SELECT * FROM `loan_repayments` WHERE submission_token = ? LIMIT 1");
+        $stmt->execute([$token]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /**
+     * Shared INSERT used by every record*() method below -- unchanged in
+     * shape from what each method already built inline (dynamic column
+     * list from array_keys($data)), factored out only so the duplicate-
+     * submission translation lives in exactly one place. Never changes
+     * what data is inserted; only how a unique-constraint violation on
+     * submission_token is reported to the caller.
+     */
+    private function insertRepaymentRow(array $data): int
+    {
+        $columns      = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($data)));
+        $placeholders = implode(', ', array_fill(0, count($data), '?'));
+        try {
+            $stmt = $this->db->prepare("INSERT INTO `loan_repayments` ({$columns}) VALUES ({$placeholders})");
+            $stmt->execute(array_values($data));
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000' && str_contains($e->getMessage(), 'uk_repayments_submission_token')) {
+                throw new DuplicateRepaymentSubmissionException(
+                    'This repayment was already submitted and recorded. Refusing to record it a second time.', 0, $e
+                );
+            }
+            throw $e;
+        }
+        return (int)$this->db->lastInsertId();
     }
 
     // ================================================================
@@ -324,7 +394,7 @@ class RepaymentModel extends Model
         try {
             $this->db->beginTransaction();
 
-            $loanStmt = $this->db->prepare("SELECT id, outstanding, total_payable, status, loan_type_id FROM `loans` WHERE id = ? FOR UPDATE");
+            $loanStmt = $this->db->prepare("SELECT id, outstanding, total_payable, status, loan_type_id, loan_amount, interest_amount FROM `loans` WHERE id = ? FOR UPDATE");
             $loanStmt->execute([$data['loan_id']]);
             $loan = $loanStmt->fetch();
             if (!$loan) { $this->db->rollBack(); return false; }
@@ -353,36 +423,93 @@ class RepaymentModel extends Model
             $nonPenaltyPaid = round($paid - $penaltyPaid, 2);
 
             $balanceBefore = (float)$loan['outstanding'];
-            $balanceAfter  = max(0, round($balanceBefore - $nonPenaltyPaid, 2));
+
+            // Stage — Loan Schedule & Due-Date Integrity Remediation
+            // (Remediation F): the model layer must not silently absorb
+            // an excess payment by clamping outstanding to 0 -- reject it
+            // outright, before any row is inserted or any balance is
+            // touched, exactly like the controller's own pre-existing
+            // validate() check already does for the real HTTP flow. This
+            // protects any OTHER caller of this model directly (a future
+            // API, an import script, a console command) that does not
+            // go through RepaymentController::validate().
+            if ($nonPenaltyPaid > $balanceBefore + 0.01) {
+                throw new InvalidArgumentException(
+                    'Payment of Shs ' . number_format($nonPenaltyPaid, 2) .
+                    ' exceeds the outstanding balance of Shs ' . number_format($balanceBefore, 2) . '.'
+                );
+            }
+
+            $balanceAfter = max(0, round($balanceBefore - $nonPenaltyPaid, 2));
 
             $data['balance_before'] = $balanceBefore;
             $data['balance_after']  = $balanceAfter;
             $data['loan_type_id']   = $data['loan_type_id'] ?? $loan['loan_type_id'];
             $data['payment_type']   = $data['payment_type'] ?? 'installment';
-            $data['principal_paid'] = $data['principal_paid'] ?? $nonPenaltyPaid;
-            $data['interest_paid']  = $data['interest_paid'] ?? 0;
+
+            // Stage — Loan Repayment Interest Recognition: split the
+            // non-penalty portion of THIS payment between principal and
+            // interest using the loan's own stored flat-interest facts
+            // (loan_amount, interest_amount) -- never a new interest
+            // formula. A live SUM() over this loan's prior repayments
+            // (not a cached running total -- LoanProvisioningService
+            // already treats loan_repayments.principal_paid/interest_paid
+            // as the sole authoritative source, and distrusts cached
+            // totals) tells us how much of the loan's fixed interest has
+            // already been recognised, so a partial-payment sequence
+            // converges to exact totals at payoff instead of drifting.
+            if (!array_key_exists('principal_paid', $data) && !array_key_exists('interest_paid', $data)) {
+                $paidTotals = $this->db->prepare(
+                    "SELECT COALESCE(SUM(principal_paid),0) p, COALESCE(SUM(interest_paid),0) i FROM `loan_repayments` WHERE loan_id=?"
+                );
+                $paidTotals->execute([$loan['id']]);
+                $paidSoFar = $paidTotals->fetch();
+
+                $interestRemaining = max(0, round((float)$loan['interest_amount'] - (float)$paidSoFar['i'], 2));
+                $totalPayableOriginal = (float)$loan['loan_amount'] + (float)$loan['interest_amount'];
+
+                $interestPaid = 0.0;
+                if ($interestRemaining > 0.005 && $totalPayableOriginal > 0) {
+                    $interestRatio = (float)$loan['interest_amount'] / $totalPayableOriginal;
+                    $interestPaid = min(round($nonPenaltyPaid * $interestRatio, 2), $interestRemaining, $nonPenaltyPaid);
+                }
+                $principalPaid = max(0, round($nonPenaltyPaid - $interestPaid, 2));
+            } else {
+                $interestPaid  = (float)($data['interest_paid'] ?? 0);
+                $principalPaid = (float)($data['principal_paid'] ?? $nonPenaltyPaid);
+            }
+            $data['principal_paid'] = $principalPaid;
+            $data['interest_paid']  = $interestPaid;
             $data['savings_paid']   = $data['savings_paid'] ?? 0;
             $data['penalty_paid']   = $penaltyPaid;
 
             $data['cash_reference_number'] = ($data['payment_method'] ?? null) === 'Cash'
                 ? $this->nextCashReference('CHL')
                 : null;
+            $data['submission_token'] = $data['submission_token'] ?? null;
 
-            $columns      = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($data)));
-            $placeholders = implode(', ', array_fill(0, count($data), '?'));
-            $insertStmt   = $this->db->prepare("INSERT INTO `loan_repayments` ({$columns}) VALUES ({$placeholders})");
-            $insertStmt->execute(array_values($data));
-            $newId = (int)$this->db->lastInsertId();
+            $newId = $this->insertRepaymentRow($data);
 
-            // Update loan
-            $newStatus = $balanceAfter <= 0 ? 'completed' : $loan['status'];
+            // Update installment schedule (non-penalty portion only) --
+            // moved BEFORE the loans status computation below (Stage —
+            // Loan Schedule & Due-Date Integrity Remediation, Remediation
+            // G) so scheduleFullyReconciled() sees THIS payment's effect
+            // on the installment rows, not their pre-payment state.
+            $this->updateInstallmentOnPayment((int)$loan['id'], $nonPenaltyPaid, $data['payment_date'] ?? null);
+
+            // Update loan. Completion now also requires the installment
+            // schedule (where one exists) to be fully reconciled, not
+            // just outstanding<=0 -- closes the gap where loans.outstanding
+            // could reach zero while a scheduled installment technically
+            // remained open. A loan with NO installment schedule at all
+            // (a legitimate schedule-less product) is unaffected:
+            // scheduleFullyReconciled() returns true when there is
+            // nothing to reconcile, preserving its existing lifecycle.
+            $newStatus = ($balanceAfter <= 0 && $this->scheduleFullyReconciled((int)$loan['id'])) ? 'completed' : $loan['status'];
             $this->db->prepare(
                 "UPDATE `loans` SET outstanding=?, amount_paid=amount_paid+?, status=?, last_payment_date=CURDATE(),
                  next_payment_date=DATE_ADD(CURDATE(), INTERVAL 1 MONTH) WHERE id=?"
             )->execute([$balanceAfter, $nonPenaltyPaid, $newStatus, $loan['id']]);
-
-            // Update installment schedule (non-penalty portion only)
-            $this->updateInstallmentOnPayment((int)$loan['id'], $nonPenaltyPaid, $data['payment_date'] ?? null);
 
             $data['id'] = $newId;
             $this->postRepaymentJournal($newId, $data, (int)($data['received_by'] ?? 0));
@@ -423,11 +550,9 @@ class RepaymentModel extends Model
             $data['cash_reference_number'] = ($data['payment_method'] ?? null) === 'Cash'
                 ? $this->nextCashReference('CHL')
                 : null;
+            $data['submission_token'] = $data['submission_token'] ?? null;
 
-            $columns      = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($data)));
-            $placeholders = implode(', ', array_fill(0, count($data), '?'));
-            $this->db->prepare("INSERT INTO `loan_repayments` ({$columns}) VALUES ({$placeholders})")->execute(array_values($data));
-            $newId = (int)$this->db->lastInsertId();
+            $newId = $this->insertRepaymentRow($data);
 
             // Update loan interest_paid_total (does NOT reduce outstanding)
             $this->db->prepare(
@@ -484,11 +609,9 @@ class RepaymentModel extends Model
             $data['cash_reference_number'] = ($data['payment_method'] ?? null) === 'Cash'
                 ? $this->nextCashReference('CHL')
                 : null;
+            $data['submission_token'] = $data['submission_token'] ?? null;
 
-            $columns      = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($data)));
-            $placeholders = implode(', ', array_fill(0, count($data), '?'));
-            $this->db->prepare("INSERT INTO `loan_repayments` ({$columns}) VALUES ({$placeholders})")->execute(array_values($data));
-            $newId = (int)$this->db->lastInsertId();
+            $newId = $this->insertRepaymentRow($data);
 
             // Update loan interest_paid_total
             $this->db->prepare(
@@ -523,9 +646,21 @@ class RepaymentModel extends Model
             if (!$loan) { $this->db->rollBack(); return false; }
 
             $paid = (float)$data['amount_paid'];
-            $balanceAfter = max(0, (float)$loan['outstanding'] - $paid);
+            $outstandingBefore = (float)$loan['outstanding'];
 
-            $data['balance_before'] = (float)$loan['outstanding'];
+            // Stage — Loan Schedule & Due-Date Integrity Remediation
+            // (Remediation F, applied consistently to this variant too --
+            // same defect class, no change to allocation policy).
+            if ($paid > $outstandingBefore + 0.01) {
+                throw new InvalidArgumentException(
+                    'Payment of Shs ' . number_format($paid, 2) .
+                    ' exceeds the outstanding balance of Shs ' . number_format($outstandingBefore, 2) . '.'
+                );
+            }
+
+            $balanceAfter = max(0, $outstandingBefore - $paid);
+
+            $data['balance_before'] = $outstandingBefore;
             $data['balance_after']  = $balanceAfter;
             $data['loan_type_id']   = $loan['loan_type_id'];
             $data['payment_type']   = 'principal';
@@ -537,11 +672,9 @@ class RepaymentModel extends Model
             $data['cash_reference_number'] = ($data['payment_method'] ?? null) === 'Cash'
                 ? $this->nextCashReference('CHL')
                 : null;
+            $data['submission_token'] = $data['submission_token'] ?? null;
 
-            $columns      = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($data)));
-            $placeholders = implode(', ', array_fill(0, count($data), '?'));
-            $this->db->prepare("INSERT INTO `loan_repayments` ({$columns}) VALUES ({$placeholders})")->execute(array_values($data));
-            $newId = (int)$this->db->lastInsertId();
+            $newId = $this->insertRepaymentRow($data);
 
             $newStatus = $balanceAfter <= 0 ? 'completed' : $loan['status'];
             $this->db->prepare(
@@ -622,6 +755,30 @@ class RepaymentModel extends Model
     // ================================================================
     // UPDATE INSTALLMENT ON PAYMENT
     // ================================================================
+
+    /**
+     * Stage — Loan Schedule & Due-Date Integrity Remediation
+     * (Remediation G): true when this loan has no installment schedule
+     * at all (a legitimate schedule-less product -- its existing
+     * completion lifecycle is preserved unchanged) OR every installment
+     * row has reached status='paid'. Used only by recordRepayment()'s
+     * completion check -- the standard/installment path, the only one
+     * where loan_installments is actually kept in sync with payments.
+     * The business-loan variants (recordPrincipalPayment(),
+     * recordInterestPayment(), recordWeeklySavings()) are deliberately
+     * NOT changed to use this: they do not maintain loan_installments the
+     * same way, and retrofitting that would be exactly the business-loan-
+     * variant redesign this stage is scoped to avoid.
+     */
+    private function scheduleFullyReconciled(int $loanId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) total, COALESCE(SUM(status='paid'),0) paid FROM `loan_installments` WHERE loan_id=?"
+        );
+        $stmt->execute([$loanId]);
+        $r = $stmt->fetch();
+        return (int)$r['total'] === 0 || (int)$r['total'] === (int)$r['paid'];
+    }
 
     /**
      * When a payment is recorded, update the next pending/overdue installment.

@@ -592,83 +592,45 @@ class LoanController extends Controller
         if (!$loan) { $this->abort404(); }
 
         $installments = $this->model->getInstallments($loanId);
+        $scheduleNotice = null;
 
-        // If no installments exist, generate them now
-        if (empty($installments) && (int)($loan['loan_period_months'] ?? 0) > 0) {
-            $monthlyInstallment = (float)($loan['monthly_installment'] ?? 0);
-            $months = (int)$loan['loan_period_months'];
-            $startDate = $loan['approval_date'] ?? $loan['issue_date'];
-            $loanRate = (float)$loan['interest_rate']; // Use the ACTUAL rate stored on the loan
-            $loanRepFreq = $loan['repayment_frequency'] ?? 'monthly';
-            $loanIntMode = $loan['interest_mode'] ?? 'percentage';
-            $loanFixedAmt = (float)($loan['fixed_interest_amount'] ?? 0);
-
-            if ($monthlyInstallment > 0 || $loanRate > 0 || $loanFixedAmt > 0) {
-                // Weekly fixed-interest loans get their own schedule
-                if ($loanRepFreq === 'weekly' && $loanIntMode === 'fixed' && $loanFixedAmt > 0) {
-                    $this->model->generateWeeklyInterestSchedule(
-                        $loanId, (float)$loan['loan_amount'], $loanFixedAmt, $months, $startDate
-                    );
-                } else {
-                    // Determine from the PRODUCT whether this is a Business
-                    // Loan (interest_only repayment_type), independent of
-                    // whatever loan.repayment_method happens to hold --
-                    // that column only decides WHICH interest_only-type
-                    // schedule shape to regenerate, not WHETHER one applies.
-                    $loanTypeId = (int)($loan['loan_type_id'] ?? 1);
-                    $repType = $loan['repayment_type'] ?? 'installment';
-                    try {
-                        $stmt = Database::getInstance()->getConnection()->prepare("SELECT repayment_type FROM loan_types WHERE id=?");
-                        $stmt->execute([$loanTypeId]);
-                        $lt = $stmt->fetch();
-                        if ($lt) $repType = $lt['repayment_type'];
-                    } catch (PDOException $e) {}
-
-                    if ($repType === 'interest_only') {
-                        // Stage 9.2-B: genuinely branch on the loan's own
-                        // stored repayment_method -- previously this
-                        // always regenerated the "Standard" shape
-                        // regardless (Stage 9.2-A's audit finding).
-                        require_once APP_PATH . '/models/LoanProductModel.php';
-                        $productModel = new LoanProductModel();
-                        if (($loan['repayment_method'] ?? 'interest_only') === 'business_boost') {
-                            $weeks = max(1, $months * 4);
-                            $this->model->generateWeeklyInstallmentSchedule(
-                                $loanId, (float)$loan['loan_amount'], (float)$loan['interest_amount'],
-                                (float)$loan['total_payable'], $months, $startDate, 0
-                            );
-                        } else {
-                            $interestOnlyMonths = max(1, $months - 2);
-                            $productModel->generateBusinessBoostSchedule(
-                                $loanId, (float)$loan['loan_amount'], $loanRate,
-                                $months, $interestOnlyMonths, 8, $startDate
-                            );
-                        }
-                    } elseif ($loanRepFreq === 'weekly') {
-                        // Stage 9.2: a percentage-mode weekly standard-
-                        // installment loan needs the real weekly generator,
-                        // not the monthly-cadence one below.
-                        $totalPayable = (float)$loan['total_payable'];
-                        $this->model->generateWeeklyInstallmentSchedule(
-                            $loanId, (float)$loan['loan_amount'], (float)$loan['interest_amount'],
-                            $totalPayable, $months, $startDate, (int)($loan['grace_period_months'] ?? 0) * 4
-                        );
-                    } else {
-                        // Standard monthly installment schedule
-                        if ($monthlyInstallment <= 0) {
-                            $totalPayable = (float)$loan['total_payable'];
-                            $monthlyInstallment = $months > 0 ? round($totalPayable / $months, 2) : $totalPayable;
-                        }
-                        $this->model->generateInstallments($loanId, $monthlyInstallment, $months, $startDate);
-                    }
+        // Stage — Loan Schedule & Due-Date Integrity Remediation
+        // (Finding 1): the authoritative schedule is generated at
+        // disbursement now, not at draft creation -- a loan that hasn't
+        // been disbursed yet legitimately has no installment rows. Show
+        // that plainly rather than attempting to generate a provisional
+        // schedule (which would need its own, separately-invented
+        // "provisional" semantics this stage's approved scope did not
+        // extend to -- see the remediation report).
+        if (empty($installments) && empty($loan['disbursed_at'])) {
+            $scheduleNotice = 'This loan has not yet been disbursed. The repayment schedule will be generated once disbursement is complete.';
+        } elseif (empty($installments) && (int)($loan['loan_period_months'] ?? 0) > 0) {
+            // Finding 9: schedule (re)generation is a mutation, not a
+            // view -- it must not be reachable by every authenticated
+            // role merely by requesting this print route. Reads (an
+            // already-generated schedule, above) remain open to any
+            // authenticated user; only the fallback GENERATION attempt
+            // for an anomalously-empty, already-disbursed loan is gated
+            // to the same role boundary as loan creation/schedule
+            // management. A non-write-access viewer sees a clear notice
+            // instead of silently triggering a schedule mutation.
+            if (!Session::hasRole(['admin', 'treasurer', 'loans_officer'])) {
+                $scheduleNotice = 'No installment schedule is available for this loan yet. Please contact a loan officer.';
+            } else {
+                try {
+                    $this->model->generateAuthoritativeSchedule($loanId, $loan['disbursement_date'] ?? $loan['issue_date']);
+                    $installments = $this->model->getInstallments($loanId);
+                } catch (Throwable $e) {
+                    error_log('printSchedule() lazy-recovery generation failed for loan ' . $loanId . ': ' . $e->getMessage());
+                    $scheduleNotice = 'The repayment schedule could not be generated. Please contact an administrator.';
                 }
-                $installments = $this->model->getInstallments($loanId);
             }
         }
 
         $this->render('loans/schedule', [
-            'loan'         => $loan,
-            'installments' => $installments,
+            'loan'           => $loan,
+            'installments'   => $installments,
+            'scheduleNotice' => $scheduleNotice,
         ], null);
     }
 
@@ -844,52 +806,31 @@ class LoanController extends Controller
                         return;
                     }
                 }
-                // Generate installment schedule based on frequency and interest mode
-                $repFreq = $input['repayment_frequency'] ?? 'monthly';
-                $intMode = $input['interest_mode'] ?? 'percentage';
-                $fixedAmt = (float)($input['fixed_interest_amount'] ?? 0);
-
-                if ($repFreq === 'weekly' && $intMode === 'fixed' && $fixedAmt > 0) {
-                    // Weekly fixed interest schedule: weekly interest payments + final principal
-                    $this->model->generateWeeklyInterestSchedule(
-                        $newId,
-                        $input['loan_amount'],
-                        $fixedAmt, // weekly interest amount
-                        $input['loan_period_months'],
-                        $input['approval_date'] ?? $input['issue_date']
-                    );
-                } elseif ($repFreq === 'weekly' && $intMode !== 'fixed' && $input['loan_period_months'] > 0) {
-                    // Stage 9.2: percentage-mode weekly loans previously fell
-                    // through to the monthly-only branch below, silently
-                    // ignoring their own 'weekly' frequency.
-                    $months = (int)$input['loan_period_months'];
-                    $this->model->generateWeeklyInstallmentSchedule(
-                        $newId,
-                        (float)$input['loan_amount'],
-                        (float)$input['interest_amount'],
-                        (float)$input['total_payable'],
-                        $months,
-                        $input['approval_date'] ?? $input['issue_date'],
-                        (int)($input['grace_period_months'] ?? 0) * 4
-                    );
-                } elseif ($input['loan_period_months'] > 0 && $input['monthly_installment'] > 0) {
-                    $months = (int)$input['loan_period_months'];
-                    $this->model->generateInstallments(
-                        $newId,
-                        $input['monthly_installment'],
-                        $months,
-                        $input['approval_date'] ?? $input['issue_date'],
-                        (int)($input['grace_period_months'] ?? 0),
-                        $months > 0 ? round(((float)$input['interest_amount']) / $months, 2) : 0.0,
-                        (float)$input['loan_amount']
-                    );
-                }
-
-                // For Business Loans: generate proper schedule based on repayment method.
-                // Only $calcFinal['repayment_type'] is used below -- if the rate engine
-                // can't resolve a rate (e.g. the amount is in an unconfigured bracket
-                // gap, already validated/tolerated earlier since we reached this point),
-                // fall back to a direct repayment_type lookup rather than failing here.
+                // Stage — Loan Schedule & Due-Date Integrity Remediation
+                // (Finding 1, approved business rule): the authoritative
+                // installment schedule is NO LONGER generated here, at
+                // draft-creation time. It is now generated exactly once,
+                // anchored to the real disbursement date, inside
+                // LoanModel::disburse() -- see
+                // LoanModel::generateAuthoritativeSchedule(), which
+                // contains the exact same dispatch logic that used to
+                // live in this method (weekly-fixed / weekly-percentage /
+                // monthly / interest_only / business_boost), unchanged
+                // internally, only relocated. A draft/pending/approved
+                // loan legitimately has NO loan_installments rows at all
+                // now -- this is the intended, documented "provisional"
+                // state, not a defect (see printSchedule() below for how
+                // the UI handles it).
+                //
+                // What DOES still need to be captured here, at creation
+                // time, is the loan officer's up-front choice between the
+                // two business-loan variants ("Interest Only (Standard)"
+                // vs "Business Boost") -- a real product decision made
+                // when the loan is created, not something disbursement
+                // time can re-derive from $_POST (which no longer exists
+                // by then). It is persisted onto loans.repayment_method
+                // immediately so generateAuthoritativeSchedule() can read
+                // it back later.
                 require_once APP_PATH . '/models/LoanProductModel.php';
                 $productModel = new LoanProductModel();
                 try {
@@ -899,119 +840,13 @@ class LoanController extends Controller
                     $repTypeStmt->execute([(int)$input['loan_type_id']]);
                     $calcFinal = ['repayment_type' => $repTypeStmt->fetchColumn() ?: 'installment'];
                 }
-
-                // Authoritative, server-calculated rate (see collectInput()) --
-                // never a client-submitted value.
-                $finalRate = (float)$input['interest_rate'];
-
+                $repFreq = $input['repayment_frequency'] ?? 'monthly';
+                $intMode = $input['interest_mode'] ?? 'percentage';
+                $fixedAmt = (float)($input['fixed_interest_amount'] ?? 0);
                 if (($calcFinal['repayment_type'] ?? '') === 'interest_only' && !($repFreq === 'weekly' && $intMode === 'fixed' && $fixedAmt > 0)) {
-                    // Delete standard installments — we'll generate the correct ones
-                    Database::getInstance()->getConnection()->prepare("DELETE FROM loan_installments WHERE loan_id=?")->execute([$newId]);
-
-                    // Stage 9.2-B: genuinely branch on what was actually
-                    // selected. Stage 9.2-A's audit proved this used to
-                    // always run the "Standard" generator regardless of
-                    // the dropdown and hardcode repayment_method to
-                    // 'business_boost' on save either way -- both options
-                    // produced byte-identical schedules. 'interest_only'
-                    // (the dropdown's first/default option) is "Interest
-                    // Only (Standard)"; 'business_boost' now gets its own
-                    // real, distinct implementation.
                     $repaymentMethod = in_array($_POST['repayment_method'] ?? '', ['interest_only', 'business_boost'], true)
                         ? $_POST['repayment_method'] : 'interest_only';
-
-                    if ($repaymentMethod === 'business_boost') {
-                        // Principal + interest every period from period 1,
-                        // no deferred/interest-only phase -- reuses the
-                        // same weekly generator Stage 9.2 built for
-                        // standard-installment products (it already
-                        // guarantees an exact-sum, rounding-correct
-                        // schedule); this is a parameter choice (full-term
-                        // weeks, zero grace weeks), not a new engine.
-                        $months = (int)$input['loan_period_months'];
-                        $weeks  = max(1, $months * 4);
-                        $this->model->generateWeeklyInstallmentSchedule(
-                            $newId,
-                            (float)$input['loan_amount'],
-                            (float)$input['interest_amount'],
-                            (float)$input['total_payable'],
-                            $months,
-                            $input['approval_date'] ?? $input['issue_date'],
-                            0 // no grace weeks -- principal recovery starts week 1
-                        );
-                        // Runs AFTER generateBusinessBoostSchedule() would
-                        // have (it isn't called on this branch at all), so
-                        // no ordering dependency on that function's own
-                        // internal repayment_method write.
-                        $this->model->update($newId, [
-                            'monthly_installment'      => round((float)$input['total_payable'] / $weeks, 2),
-                            'repayment_method'         => 'business_boost',
-                            'interest_only_months'     => 0,
-                            'principal_recovery_weeks' => $weeks,
-                        ]);
-                    } else {
-                        // "Interest Only (Standard)" -- unchanged from the
-                        // already-correct behavior the audit verified:
-                        // interest-only initial months, then a fixed
-                        // 8-week window where every payment carries
-                        // principal + interest, reconciling exactly to
-                        // zero outstanding.
-                        $interestOnlyMonths = max(1, $input['loan_period_months'] - 2);
-                        $recoveryWeeks = 8;
-
-                        $productModel->generateBusinessBoostSchedule(
-                            $newId,
-                            $input['loan_amount'],
-                            $finalRate, // Use the actual rate from the form
-                            $input['loan_period_months'],
-                            $interestOnlyMonths,
-                            $recoveryWeeks,
-                            $input['approval_date'] ?? $input['issue_date']
-                        );
-
-                        // Recalculate totals with correct rate. This call
-                        // itself hardcodes repayment_method='business_boost'
-                        // internally -- the update() below runs after it
-                        // and is what actually determines the final,
-                        // correctly-labeled stored value.
-                        $boostCalc = $productModel->calculateBusinessBoost(
-                            $input['loan_amount'], $finalRate,
-                            $input['loan_period_months'], $interestOnlyMonths, $recoveryWeeks
-                        );
-                        $this->model->update($newId, [
-                            'total_payable'   => $boostCalc['total_payable'],
-                            'outstanding'     => $boostCalc['total_payable'],
-                            'interest_amount' => $boostCalc['total_interest'],
-                            'repayment_method' => 'interest_only',
-                            'interest_only_months' => $interestOnlyMonths,
-                            'principal_recovery_weeks' => $recoveryWeeks,
-                        ]);
-                    }
-                }
-
-                // Stage 9.2: refuse to finalize a loan whose generated
-                // schedule doesn't sum to its own total_payable, rather
-                // than silently leaving a mismatched schedule in place.
-                // Re-fetches total_payable fresh since the Business Boost
-                // branch above may have updated it after the initial
-                // schedule dispatch.
-                $savedLoan = $this->model->find($newId);
-                $scheduledTotal = (float)(Database::getInstance()->getConnection()
-                    ->query("SELECT COALESCE(SUM(amount_due),0) FROM loan_installments WHERE loan_id=" . (int)$newId)
-                    ->fetchColumn());
-                $expectedTotal = (float)($savedLoan['total_payable'] ?? 0);
-                if ($expectedTotal > 0 && abs($scheduledTotal - $expectedTotal) > 0.01) {
-                    error_log("Loan {$input['loan_number']} schedule invariant failed: scheduled={$scheduledTotal} expected={$expectedTotal} -- rolling back.");
-                    if ($sourceApplication !== null) {
-                        Database::getInstance()->getConnection()
-                            ->prepare("UPDATE loan_applications SET converted_loan_id=NULL, converted_at=NULL WHERE id=?")
-                            ->execute([$sourceApplication['id']]);
-                    }
-                    $this->model->delete($newId);
-                    Session::flash('error', 'The generated repayment schedule did not match the loan\'s total payable amount. Nothing was saved -- please try again or contact an administrator.');
-                    Session::flash('form_old', $input);
-                    $this->redirect(APP_URL . '/index.php?page=loan-add');
-                    return;
+                    $this->model->update($newId, ['repayment_method' => $repaymentMethod]);
                 }
 
                 // Auto-charge loan processing fee
@@ -1201,23 +1036,23 @@ class LoanController extends Controller
             $calc['monthly_installment'] = round($calc['total_payable'] / max(1, $months * 4), 2);
         }
 
-        // Due date = approval/issue date + loan period
+        // Due date = approval/issue date + loan period -- a provisional
+        // estimate only; disburse() recomputes the authoritative due_date
+        // from the real disbursement date. Uses the calendar-safe helper
+        // (Stage — Loan Schedule & Due-Date Integrity Remediation) so this
+        // preview never silently skips a month for a month-end date.
         $dueDate = '';
         if ($approvalDate && $months > 0) {
             try {
-                $dt = new DateTime($approvalDate);
-                $dt->modify("+{$months} months");
-                $dueDate = $dt->format('Y-m-d');
+                $dueDate = LoanModel::addCalendarMonths($approvalDate, $months);
             } catch (\Exception $e) { $dueDate = ''; }
         }
 
-        // Next payment date = 1 month from approval
+        // Next payment date = 1 month from approval (same provisional caveat)
         $nextPayment = '';
         if ($approvalDate) {
             try {
-                $dt = new DateTime($approvalDate);
-                $dt->modify("+1 month");
-                $nextPayment = $dt->format('Y-m-d');
+                $nextPayment = LoanModel::addCalendarMonths($approvalDate, 1);
             } catch (\Exception $e) {}
         }
 
@@ -1546,9 +1381,40 @@ class LoanController extends Controller
         $this->redirect(APP_URL . '/index.php?page=loan-view&id=' . $id);
     }
 
+    /**
+     * Stage — Loan Disbursement Funding Source: the disbursement screen
+     * itself. Shown only for an approved, not-yet-disbursed loan; the
+     * actual funding-source selection and accounting preview live here,
+     * not on the one-click confirm previously used.
+     */
+    public function disburseForm(): void
+    {
+        $this->requireDisburseAccess();
+        $id = (int)($_GET['id'] ?? 0);
+        $loan = $this->model->find($id);
+        if (!$loan) {
+            http_response_code(404);
+            die('Loan not found.');
+        }
+        if ($loan['status'] !== 'approved') {
+            Session::flash('error', "Loan {$loan['loan_number']} is not in 'approved' status and cannot be disbursed.");
+            $this->redirect(APP_URL . '/index.php?page=loan-view&id=' . $id);
+            return;
+        }
+        $member = (new MemberModel())->find((int)$loan['member_id']);
+
+        $this->render('loans/disburse-form', [
+            'pageTitle'  => 'Disburse Loan — ' . $loan['loan_number'],
+            'loan'       => $loan,
+            'member'     => $member,
+            'methods'    => LoanModel::LOAN_DISBURSEMENT_METHODS,
+            'csrfToken'  => $this->getCsrf(),
+        ]);
+    }
+
     public function disburse(): void
     {
-        $this->requireApproverAccess();
+        $this->requireDisburseAccess();
 
         if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
             Session::flash('error', 'Security token mismatch. Please try again.');
@@ -1557,11 +1423,15 @@ class LoanController extends Controller
         }
 
         $id = (int)($_POST['loan_id'] ?? 0);
+        $disbursementMethod = trim($_POST['disbursement_method'] ?? '');
         try {
+            if (!in_array($disbursementMethod, LoanModel::LOAN_DISBURSEMENT_METHODS, true)) {
+                throw new InvalidArgumentException('Select the funding source: Cash, Bank, or Mobile Money.');
+            }
             $loan   = $this->model->find($id);
-            $result = $this->model->disburse($id, (int)Session::get('user_id'));
+            $result = $this->model->disburse($id, (int)Session::get('user_id'), $disbursementMethod);
             $this->model->log((int)Session::get('user_id'), 'loan_disbursed',
-                "Disbursed loan {$loan['loan_number']} — journal entry {$result['entry_number']}");
+                "Disbursed loan {$loan['loan_number']} via {$disbursementMethod} — journal entry {$result['entry_number']}");
             (new NotificationModel())->notifyRoles(
                 ['admin', 'treasurer', 'loans_officer'],
                 "Loan {$loan['loan_number']} disbursed",

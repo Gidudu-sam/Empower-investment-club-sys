@@ -8,7 +8,8 @@ $membersOpen = in_array($currentPage, $memberPages);
 $savingsPages = ['savings','savings-add','savings-edit','savings-view','savings-member','savings-report',
                  'savings-accounts','savings-account-open','savings-account-voluntary','savings-account-voluntary-store',
                  'savings-account-joint','savings-account-joint-store','savings-account-corporate','savings-account-corporate-store',
-                 'savings-account-view','savings-account-statement','savings-account-member-summary'];
+                 'savings-account-view','savings-account-statement','savings-account-member-summary',
+                 'savings-account-bf-register','savings-account-bf-classify'];
 $savingsOpen  = in_array($currentPage, $savingsPages);
 
 $loanPages  = ['loans','loan-add','loan-edit','loan-view','loan-member','loan-pending-approval',
@@ -294,6 +295,12 @@ $canSeeAdministrationSection = ($canSeeAdminPolicySettings || $canSeeAdminTechni
                         <a class="nav-link <?= isActive('savings-report') ?>"
                            href="<?= APP_URL ?>/index.php?page=savings-report">
                             <i class="bi bi-file-bar-graph me-2"></i> Reports
+                        </a>
+                        <?php endif; ?>
+                        <?php if (Session::hasRole(['admin', 'treasurer'])): ?>
+                        <a class="nav-link <?= isActive('savings-account-bf-register') ?>"
+                           href="<?= APP_URL ?>/index.php?page=savings-account-bf-register">
+                            <i class="bi bi-clock-history me-2"></i> B/F Register
                         </a>
                         <?php endif; ?>
                     </nav>

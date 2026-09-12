@@ -637,6 +637,12 @@ class SavingsAccountController extends Controller
             'account'   => $account,
             'holders'   => $loaded['holders'],
             'csrfToken' => $this->getCsrf(),
+            // Stage B/F Dual Posting Modes: the funds-position choices
+            // offered on the form are exactly the "verified_asset"-
+            // eligible payment methods the model will accept -- kept in
+            // one place (SavingsModel::BF_VERIFIED_ASSET_METHODS) so the
+            // UI can never offer an option the model would reject.
+            'bfAssetMethods' => SavingsModel::BF_VERIFIED_ASSET_METHODS,
         ]);
     }
 
@@ -679,13 +685,45 @@ class SavingsAccountController extends Controller
             date('d F Y', strtotime($periodTo))
         );
 
-        return [
+        // Stage B/F Dual Posting Modes: 'verified_asset' requires a real
+        // holding account (Cash/Bank/Mobile Money) and is posted to the
+        // GL; 'historical_only' requires a mandatory reason instead,
+        // appended to the same notes string the period sentence already
+        // occupies -- no new column, reusing the existing mandatory
+        // notes field exactly as the period-date-correction stage
+        // already established the pattern of consolidating structured
+        // input into one stored sentence.
+        $postingMode = trim($_POST['posting_mode'] ?? '');
+        if (!in_array($postingMode, ['verified_asset', 'historical_only'], true)) {
+            throw new InvalidArgumentException('Please select a Funds Position: Cash, Bank, Mobile Money, or Historical Only.');
+        }
+
+        $paymentMethod = null;
+        if ($postingMode === 'verified_asset') {
+            $paymentMethod = trim($_POST['payment_method'] ?? '');
+            if (!in_array($paymentMethod, SavingsModel::BF_VERIFIED_ASSET_METHODS, true)) {
+                throw new InvalidArgumentException('Select which account (Cash, Bank, or Mobile Money) actually holds these funds.');
+            }
+        } else {
+            $reason = trim($_POST['historical_only_reason'] ?? '');
+            if ($reason === '') {
+                throw new InvalidArgumentException('Please explain why the corresponding club asset has not been independently verified.');
+            }
+            $notes .= ' Historical Only: ' . $reason;
+        }
+
+        $result = [
             'member_id'          => $memberId,
             'savings_account_id' => $accountId,
             'amount'             => $amount,
             'transaction_date'   => $effectiveDate,
             'notes'              => $notes,
+            'posting_mode'       => $postingMode,
         ];
+        if ($paymentMethod !== null) {
+            $result['payment_method'] = $paymentMethod;
+        }
+        return $result;
     }
 
     public function bfStore(): void
@@ -719,6 +757,14 @@ class SavingsAccountController extends Controller
             $memberLabel = $member ? trim($member['first_name'] . ' ' . $member['last_name']) : ('member #' . $memberId);
             $enteredBy = Session::get('user_name') ?? ('user #' . $userId);
 
+            // Stage B/F Dual Posting Modes: journal status now genuinely
+            // differs by mode -- state the real outcome for whichever
+            // mode was actually used, rather than the old unconditional
+            // "No GL Journal" text.
+            $journalStatus = $result['posting_mode'] === 'verified_asset'
+                ? "Posted as journal entry {$result['entry_number']} (Dr {$result['asset_account']} / Cr Members' Savings)."
+                : 'No GL Journal — Historical Subledger Entry.';
+
             // Section 20's required confirmation content (member, account,
             // amount, effective date, receipt/reference, entered by,
             // journal status) as one flash message -- the account view
@@ -730,8 +776,13 @@ class SavingsAccountController extends Controller
                 "Balance Brought Forward recorded — Member: {$memberLabel} — Account: {$account['account_number']} — " .
                 "Amount: Shs " . number_format($input['amount'], 2) . " — Effective: " . date('d M Y', strtotime($input['transaction_date'])) . " — " .
                 "Receipt: {$result['receipt_number']} — Entered by: {$enteredBy} — " .
-                "Journal status: No GL Journal — Historical Subledger Entry."
+                "Journal status: {$journalStatus}"
             );
+            $savingsModel->log($userId, 'bf_recorded', sprintf(
+                'Balance Brought Forward %s recorded for %s, account %s: Shs %s (%s)',
+                $result['receipt_number'], $memberLabel, $account['account_number'],
+                number_format($input['amount'], 2), $result['posting_mode']
+            ));
             $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $id);
         } catch (PDOException $e) {
             Session::flash('error', 'Could not record Balance Brought Forward: ' . $e->getMessage());
@@ -798,9 +849,14 @@ class SavingsAccountController extends Controller
                 throw new InvalidArgumentException('That Balance Brought Forward record does not belong to this account.');
             }
 
-            $savingsModel->reverseBroughtForward($savingsId, (int)Session::get('user_id'), $reason);
+            $userId = (int)Session::get('user_id');
+            $reversal = $savingsModel->reverseBroughtForward($savingsId, $userId, $reason);
 
             Session::flash('success', 'The Historical Balance Brought Forward has been reversed. The original entry remains in the ledger for audit purposes.');
+            $savingsModel->log($userId, 'bf_reversed', sprintf(
+                'Balance Brought Forward %s reversed via %s (account %s): %s',
+                $row['receipt_number'], $reversal['receipt_number'], $account['account_number'], $reason
+            ));
             $this->redirect(APP_URL . '/index.php?page=savings-account-view&id=' . $accountId);
         } catch (PDOException $e) {
             Session::flash('error', 'Could not reverse Balance Brought Forward: ' . $e->getMessage());
@@ -808,6 +864,99 @@ class SavingsAccountController extends Controller
         } catch (Throwable $e) {
             Session::flash('error', $e->getMessage());
             $this->redirect(APP_URL . '/index.php?page=savings-account-bf-reverse&id=' . $accountId);
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Stage B/F Unclassified Review — a register of every B/F system-wide
+    // (not account-scoped, unlike the rest of this controller) plus an
+    // explicit, one-time classification action for any record still
+    // showing bf_posting_mode=NULL. Same access gate as every other B/F
+    // action; never infers a classification from any existing data.
+    // ----------------------------------------------------------------
+
+    public function bfRegister(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $status = in_array($_GET['status'] ?? '', ['unclassified', 'classified'], true) ? $_GET['status'] : null;
+
+        $savingsModel = new SavingsModel();
+        $rows = $savingsModel->listBroughtForwardRegister($status);
+
+        $this->render('savings-accounts/bf-register', [
+            'pageTitle'    => 'Balance Brought Forward Register',
+            'rows'         => $rows,
+            'statusFilter' => $status,
+            'success'      => Session::flash('success'),
+            'error'        => Session::flash('error'),
+        ]);
+    }
+
+    public function bfClassifyForm(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $savingsId = (int)($_GET['id'] ?? 0);
+
+        $savingsModel = new SavingsModel();
+        $row = $savingsModel->find($savingsId);
+        if (!$row || $row['transaction_type'] !== 'opening_balance' || (float)$row['debit'] > 0) {
+            http_response_code(404);
+            die('Balance Brought Forward record not found.');
+        }
+        if ($row['bf_posting_mode'] !== null) {
+            Session::flash('error', 'This Balance Brought Forward has already been classified as ' . $row['bf_posting_mode'] . '.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-register');
+            return;
+        }
+
+        $member = (new MemberModel())->find((int)$row['member_id']);
+        $account = $this->accountModel->getAccount((int)$row['savings_account_id']);
+
+        $this->render('savings-accounts/bf-classify', [
+            'pageTitle'      => 'Classify Balance Brought Forward — ' . $row['receipt_number'],
+            'bfRow'          => $row,
+            'member'         => $member,
+            'account'        => $account,
+            'bfAssetMethods' => SavingsModel::BF_VERIFIED_ASSET_METHODS,
+            'csrfToken'      => $this->getCsrf(),
+        ]);
+    }
+
+    public function bfClassifyStore(): void
+    {
+        $this->requireBroughtForwardAccess();
+        $savingsId = (int)($_POST['savings_id'] ?? 0);
+        if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
+            Session::flash('error', 'Security token mismatch. Please try again.');
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-classify&id=' . $savingsId);
+            return;
+        }
+
+        try {
+            $postingMode = trim($_POST['posting_mode'] ?? '');
+            $paymentMethod = null;
+            $reason = null;
+            if ($postingMode === 'verified_asset') {
+                $paymentMethod = trim($_POST['payment_method'] ?? '');
+            } else {
+                $reason = trim($_POST['historical_only_reason'] ?? '');
+            }
+
+            $savingsModel = new SavingsModel();
+            $userId = (int)Session::get('user_id');
+            $result = $savingsModel->classifyBroughtForward($savingsId, $postingMode, $paymentMethod, $reason, $userId);
+
+            $successMessage = $result['posting_mode'] === 'verified_asset'
+                ? "Balance Brought Forward {$result['receipt_number']} classified as verified {$result['asset_account']} — posted as journal entry {$result['entry_number']} (Dr {$result['asset_account']} / Cr Members' Savings)."
+                : "Balance Brought Forward {$result['receipt_number']} classified as Historical Only — no GL journal created.";
+            Session::flash('success', $successMessage);
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-register');
+        } catch (PDOException $e) {
+            Session::flash('error', 'Could not classify Balance Brought Forward: ' . $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-classify&id=' . $savingsId);
+        } catch (Throwable $e) {
+            Session::flash('error', $e->getMessage());
+            $this->redirect(APP_URL . '/index.php?page=savings-account-bf-classify&id=' . $savingsId);
         }
     }
 

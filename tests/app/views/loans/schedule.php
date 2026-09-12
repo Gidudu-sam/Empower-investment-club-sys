@@ -4,11 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Loan Schedule — <?= htmlspecialchars($loan['loan_number']) ?> · <?= htmlspecialchars($loan['first_name'].' '.$loan['last_name']) ?></title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: Arial, 'Segoe UI', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 9pt;
     color: #1a1a1a;
     background: #dde1ea;
@@ -51,7 +54,7 @@ body {
 .card-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     padding: 14px 20px 10px;
-    border-bottom: 4px solid #F47920;
+    border-bottom: 4px solid #B8892B;
     position: relative; z-index: 1; background: #fff;
 }
 .header-left { display: flex; align-items: center; gap: 14px; }
@@ -60,7 +63,7 @@ body {
     font-size: 1.45rem; font-weight: 900; color: #1B2B6B;
     text-transform: uppercase; line-height: 1; letter-spacing: .02em;
 }
-.brand-name span { color: #F47920; }
+.brand-name span { color: #B8892B; }
 .brand-sub { font-size: .72rem; color: #444; line-height: 1.65; margin-top: 3px; }
 .header-stamp {
     border: 1.5px solid #bbb; border-radius: 4px;
@@ -73,7 +76,7 @@ body {
 .doc-title-bar {
     background: #fff; text-align: center;
     padding: 8px 0 6px;
-    border-bottom: 2px solid #F47920;
+    border-bottom: 2px solid #B8892B;
     position: relative; z-index: 1;
 }
 .doc-title-text {
@@ -120,7 +123,7 @@ body {
     text-transform: uppercase; letter-spacing: .07em; color: #fff;
 }
 .summary-card-header.navy  { background: #1B2B6B; }
-.summary-card-header.orange { background: #F47920; }
+.summary-card-header.orange { background: #B8892B; }
 .summary-card-header.green  { background: #16a34a; }
 .summary-card-header.red    { background: #dc2626; }
 .summary-card-val {
@@ -200,7 +203,7 @@ body {
 
 /* ── Footer bar ──────────────────────────────────────── */
 .card-footer {
-    border-top: 4px solid #F47920; padding: 8px 20px;
+    border-top: 4px solid #B8892B; padding: 8px 20px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     background: #fff;
 }
@@ -208,7 +211,7 @@ body {
     font-size: .75rem; font-weight: 700; letter-spacing: .08em;
     text-transform: uppercase; color: #1B2B6B;
 }
-.footer-tagline span { color: #F47920; }
+.footer-tagline span { color: #6E7689; }
 
 /* ── Print ───────────────────────────────────────────── */
 @media print {
@@ -345,8 +348,8 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
                 <tbody>
                     <?php if (empty($installments)): ?>
                     <tr>
-                        <td colspan="7" style="padding:18px;color:#64748b;font-style:italic;text-align:center;">
-                            No installment schedule has been generated for this loan.
+                        <td colspan="7" style="padding:18px;color:#6E7689;font-style:italic;text-align:center;">
+                            <?= htmlspecialchars($scheduleNotice ?? 'No installment schedule has been generated for this loan.') ?>
                         </td>
                     </tr>
                     <?php else: ?>

@@ -12,7 +12,7 @@
         :root {
             --navy: #1B2B6B;
             --navy-dark: #0B1229;
-            --orange: #F47920;
+            --orange:#B8892B;
             --gold: #B8892B;
             --paper: #FAFBFE;
         }
@@ -61,7 +61,7 @@
         }
         .header-brand .brand-text .slogan {
             font-size: .6rem;
-            color: var(--orange);
+            color: #6E7689;
             font-style: italic;
             font-weight: 500;
         }
@@ -114,7 +114,7 @@
         .receipt-amount .amount-value .currency {
             font-size: .85rem;
             font-weight: 500;
-            color: var(--orange);
+            color: #6B7280;
         }
 
         /* Detail rows */
@@ -148,7 +148,7 @@
         }
         .receipt-footer .sig-name {
             font-size: .65rem;
-            color: #9ca3af;
+            color: #6E7689;
             text-transform: uppercase;
             letter-spacing: .05em;
         }
@@ -161,7 +161,7 @@
         }
         .receipt-footer .org-footer {
             font-size: .6rem;
-            color: #9ca3af;
+            color: #6E7689;
             margin-top: .5rem;
         }
 
@@ -224,7 +224,7 @@
             <!-- Details -->
             <div class="receipt-row">
                 <span class="label">Receipt Number</span>
-                <span class="value" style="color:var(--orange);"><?= htmlspecialchars($saving['receipt_number']) ?></span>
+                <span class="value" style="color:#171B2E;"><?= htmlspecialchars($saving['receipt_number']) ?></span>
             </div>
             <?php if (!empty($saving['account_number'])): ?>
             <div class="receipt-row">

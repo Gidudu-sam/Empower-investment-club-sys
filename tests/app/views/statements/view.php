@@ -23,10 +23,9 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 
 <style>
 /* Matches the printed statement's font exactly (statements/print.php) --
- * previously this on-screen preview inherited the app shell's Inter font
- * while the printed/PDF version used Segoe UI, so the preview never
- * looked like what actually printed. */
-.stmt-container, .stmt-container * { font-family: 'Segoe UI', Arial, sans-serif; }
+ * both now use the standard Empower Inter typeface, so the on-screen
+ * preview still looks like what actually prints. */
+.stmt-container, .stmt-container * { font-family: 'Inter', sans-serif; }
 .stmt-container { max-width: 820px; margin: 0 auto; }
 .stmt-card {
     background: #fff;
@@ -44,7 +43,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 }
 .stmt-header {
     padding: 24px 32px;
-    border-bottom: 4px solid #F47920;
+    border-bottom: 4px solid #B8892B;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -54,11 +53,11 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 }
 .stmt-logo-area { display: flex; align-items: center; gap: 16px; }
 .stmt-logo-img { height: 56px; width: 56px; object-fit: contain; }
-.stmt-logo-divider { width: 2px; height: 48px; background: #e2e8f0; }
+.stmt-logo-divider { width: 2px; height: 48px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.35rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #F47920; }
-.stmt-brand-tagline { font-size: 0.7rem; color: #64748b; font-style: italic; margin-top: 3px; }
-.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #334155; line-height: 1.7; }
+.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-tagline { font-size: 0.7rem; color: #6E7689; font-style: italic; margin-top: 3px; }
+.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
 
 .stmt-body { padding: 32px; position: relative; z-index: 1; }
@@ -83,18 +82,18 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
     background: #f8f9fc;
     padding: 18px 24px;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E5E7F0;
     margin-bottom: 32px;
 }
 .member-info-row {
     display: flex;
     justify-content: space-between;
     padding-bottom: 6px;
-    border-bottom: 1px dashed #e2e8f0;
+    border-bottom: 1px dashed #E5E7F0;
 }
 .member-info-row:last-child { border-bottom: none; padding-bottom: 0; }
-.member-info-label { color: #64748b; font-weight: 500; }
-.member-info-val { color: #1e293b; font-weight: 600; }
+.member-info-label { color: #6E7689; font-weight: 500; }
+.member-info-val { color: #171B2E; font-weight: 600; }
 
 .stmt-section-title {
     font-size: 0.75rem;
@@ -110,7 +109,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
     border-collapse: collapse;
     font-size: 0.85rem;
     margin-bottom: 24px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid #E5E7F0;
 }
 .stmt-table th {
     background: #1B2B6B;
@@ -121,13 +120,13 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    border: 1px solid #cbd5e1;
+    border: 1px solid #E5E7F0;
 }
 .stmt-table th.right { text-align: right; }
 .stmt-table th.left { text-align: left; }
 .stmt-table td {
     padding: 9px 12px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid #E5E7F0;
     vertical-align: middle;
 }
 .stmt-table tr:nth-child(even) td { background: #f8f9fc; }
@@ -144,7 +143,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 
 .tx-summary-bar {
     background: #f8f9fc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #E5E7F0;
     border-radius: 6px;
     padding: 16px 20px;
     margin-bottom: 32px;
@@ -164,13 +163,13 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
     gap: 12px;
     text-align: center;
 }
-.tx-summary-item { border-right: 1px solid #e2e8f0; padding-right: 8px; }
+.tx-summary-item { border-right: 1px solid #E5E7F0; padding-right: 8px; }
 .tx-summary-item:last-child { border-right: none; padding-right: 0; }
-.tx-summary-label { color: #64748b; font-size: 0.72rem; margin-bottom: 2px; }
-.tx-summary-val { font-weight: 700; color: #1e293b; font-size: 1rem; }
+.tx-summary-label { color: #6E7689; font-size: 0.72rem; margin-bottom: 2px; }
+.tx-summary-val { font-weight: 700; color: #171B2E; font-size: 1rem; }
 
 .info-card {
-    border: 1px solid #cbd5e1;
+    border: 1px solid #E5E7F0;
     border-radius: 6px;
     overflow: hidden;
     background: #fdfdfd;
@@ -194,29 +193,29 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
     font-size: 0.9rem;
 }
 .info-card-row:last-child { border-bottom: none; padding-bottom: 0; }
-.info-card-label { color: #475569; }
-.info-card-val { font-weight: 600; color: #1e293b; }
+.info-card-label { color: #6B7280; }
+.info-card-val { font-weight: 600; color: #171B2E; }
 .info-card-total {
     display: flex;
     justify-content: space-between;
     padding-top: 10px;
     margin-top: 4px;
-    border-top: 2px solid #cbd5e1;
+    border-top: 2px solid #E5E7F0;
     font-size: 1.1rem;
     font-weight: 800;
 }
 .info-card-total .info-card-label { color: #1B2B6B; font-weight: 800; }
 .info-card-total .info-card-val { color: #1B2B6B; font-size: 1.2rem; font-weight: 900; }
 .info-card-total.asset-total .info-card-label { color: #111827; }
-.info-card-total.asset-total .info-card-val { color: #F47920; }
+.info-card-total.asset-total .info-card-val { color: #B8892B; }
 
 .stmt-footer-note {
     text-align: center;
     margin-top: 32px;
     padding-top: 18px;
-    border-top: 1px dashed #cbd5e1;
+    border-top: 1px dashed #E5E7F0;
     font-size: 0.8rem;
-    color: #475569;
+    color: #6B7280;
     line-height: 1.6;
 }
 .stmt-footer-note p.disclaimer { font-style: italic; margin-bottom: 4px; }
@@ -224,14 +223,14 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 
 .stmt-footer-bar {
     padding: 14px 32px;
-    border-top: 3px solid #F47920;
+    border-top: 3px solid #B8892B;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     background: #fff;
 }
-.stmt-footer-tagline { font-size: 0.75rem; color: #9ca3af; font-style: italic; letter-spacing: 0.04em; }
+.stmt-footer-tagline { font-size: 0.75rem; color: #6E7689; font-style: italic; letter-spacing: 0.04em; }
 
 @media print {
     @page { size: A4 portrait; margin: 10mm 12mm 12mm; }
@@ -386,7 +385,7 @@ function shareStatementWhatsApp() {
             <tbody>
                 <?php if (empty($shareLedgerRows)): ?>
                 <tr>
-                    <td colspan="6" class="text-center" style="padding:20px;color:#64748b;font-style:italic;">
+                    <td colspan="6" class="text-center" style="padding:20px;color:#6E7689;font-style:italic;">
                         No share entries recorded.
                     </td>
                 </tr>
@@ -432,15 +431,15 @@ function shareStatementWhatsApp() {
                 <tr class="row-opening">
                     <td class="text-center"><?= htmlspecialchars($fyStart) ?></td>
                     <td>Opening Balance</td>
-                    <td class="text-muted" style="color:#94a3af;">—</td>
-                    <td class="text-right text-muted" style="color:#94a3af;">—</td>
-                    <td class="text-right text-muted" style="color:#94a3af;">—</td>
+                    <td class="text-muted" style="color:#6E7689;">—</td>
+                    <td class="text-right text-muted" style="color:#6E7689;">—</td>
+                    <td class="text-right text-muted" style="color:#6E7689;">—</td>
                     <td class="text-right amount-balance"><?= number_format($openingBalance, 2) ?></td>
                 </tr>
 
                 <?php if (empty($transactions)): ?>
                 <tr>
-                    <td colspan="6" class="text-center" style="padding:20px;color:#64748b;font-style:italic;">
+                    <td colspan="6" class="text-center" style="padding:20px;color:#6E7689;font-style:italic;">
                         No transactions during the selected statement period.
                     </td>
                 </tr>
@@ -448,12 +447,12 @@ function shareStatementWhatsApp() {
                     <?php foreach ($transactions as $tx): ?>
                     <tr>
                         <td class="text-center"><?= date('d-M-Y', strtotime($tx['date'])) ?></td>
-                        <td><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:.68rem;color:#64748b;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
+                        <td><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:.68rem;color:#6E7689;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
                         <td><?= htmlspecialchars($tx['reference']) ?></td>
-                        <td class="text-right <?= $tx['debit'] > 0 ? 'amount-debit' : 'text-muted' ?>" style="<?= $tx['debit'] == 0 ? 'color:#94a3af;' : '' ?>">
+                        <td class="text-right <?= $tx['debit'] > 0 ? 'amount-debit' : 'text-muted' ?>" style="<?= $tx['debit'] == 0 ? 'color:#6E7689;' : '' ?>">
                             <?= $tx['debit'] > 0 ? number_format($tx['debit'], 2) : '—' ?>
                         </td>
-                        <td class="text-right <?= $tx['credit'] > 0 ? 'amount-credit' : 'text-muted' ?>" style="<?= $tx['credit'] == 0 ? 'color:#94a3af;' : '' ?>">
+                        <td class="text-right <?= $tx['credit'] > 0 ? 'amount-credit' : 'text-muted' ?>" style="<?= $tx['credit'] == 0 ? 'color:#6E7689;' : '' ?>">
                             <?= $tx['credit'] > 0 ? number_format($tx['credit'], 2) : '—' ?>
                         </td>
                         <td class="text-right amount-balance"><?= number_format($tx['balance'], 2) ?></td>
@@ -562,7 +561,7 @@ function shareStatementWhatsApp() {
     </div>
 
     <!-- ── GENERATED-BY LINE ─────────────────────────────── -->
-    <div style="font-size:0.7rem;color:#475569;font-style:italic;padding:6px 28px 10px;">
+    <div style="font-size:0.7rem;color:#6B7280;font-style:italic;padding:6px 28px 10px;">
         This statement has been generated from Empower Investment Club Management System.
     </div>
 

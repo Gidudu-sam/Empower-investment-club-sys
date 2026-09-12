@@ -134,7 +134,7 @@ $periodLabel = match($type){
                 <?php else: foreach($repayments as $i=>$r): ?>
                 <tr>
                     <td class="ps-3 text-muted small"><?=$i+1?></td>
-                    <td class="fw-semibold small" style="color:var(--brand-orange)"><?= htmlspecialchars($r['repayment_number']) ?></td>
+                    <td class="fw-semibold small" style="color:var(--ink)"><?= htmlspecialchars($r['repayment_number']) ?></td>
                     <td class="small" style="color:var(--brand-navy)"><?= htmlspecialchars($r['loan_number']) ?></td>
                     <td>
                         <div class="fw-semibold small"><?= htmlspecialchars($r['first_name'].' '.$r['last_name']) ?></div>

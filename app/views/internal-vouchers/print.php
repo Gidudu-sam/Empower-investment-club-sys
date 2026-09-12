@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#F47920; }
+        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#B8892B; }
         * { box-sizing:border-box; margin:0; padding:0; }
         body { background:#eef0f5; font-family:'Inter',sans-serif; font-size:.85rem; color:#1f2937; }
         .voucher-wrap { max-width:640px; margin:1.5rem auto; padding:0 1rem; }
@@ -20,7 +20,7 @@
         .header-brand { display:flex; align-items:center; gap:.75rem; }
         .header-brand img { width:52px; height:52px; object-fit:contain; }
         .header-brand h1 { font-family:'Space Grotesk',sans-serif; font-size:1rem; font-weight:700; color:var(--navy); text-transform:uppercase; line-height:1.2; }
-        .header-brand .slogan { font-size:.6rem; color:var(--orange); font-style:italic; font-weight:500; }
+        .header-brand .slogan { font-size:.6rem; color:#6E7689; font-style:italic; font-weight:500; }
         .header-contact { text-align:right; font-size:.62rem; color:#4b5563; line-height:1.6; }
         .header-contact strong { color:var(--navy); }
 
@@ -34,7 +34,7 @@
         .voucher-amount { background:linear-gradient(135deg,rgba(27,43,107,.03),rgba(244,121,32,.03)); border:1px solid rgba(244,121,32,.15); border-radius:.4rem; padding:1.25rem; text-align:center; margin-bottom:1.5rem; }
         .voucher-amount .amount-label { font-size:.6rem; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.1em; margin-bottom:.25rem; }
         .voucher-amount .amount-value { font-family:'Space Grotesk',sans-serif; font-size:1.9rem; font-weight:700; color:var(--navy); }
-        .voucher-amount .amount-value .currency { font-size:.85rem; font-weight:500; color:var(--orange); }
+        .voucher-amount .amount-value .currency { font-size:.85rem; font-weight:500; color:#6B7280; }
         .voucher-amount .amount-words { font-size:.72rem; color:#4b5563; font-style:italic; margin-top:.5rem; }
 
         .voucher-row { display:grid; grid-template-columns:150px 1fr; gap:0 16px; align-items:baseline; padding:.55rem 0; border-bottom:1px dotted #e5e7f0; }
@@ -49,7 +49,7 @@
 
         .voucher-footer { border-top:1px solid #e5e7f0; padding:1rem 2rem; text-align:center; }
         .voucher-footer .barcode { font-family:monospace; font-size:.65rem; color:#c0c4cc; letter-spacing:.1em; }
-        .voucher-footer .org-footer { font-size:.6rem; color:#9ca3af; margin-top:.5rem; }
+        .voucher-footer .org-footer { font-size:.6rem; color:#6E7689; margin-top:.5rem; }
 
         @media print { body{background:#fff;} .voucher-wrap{margin:0;max-width:100%;padding:0;} .voucher{box-shadow:none;border:none;} .no-print{display:none!important;} }
     </style>

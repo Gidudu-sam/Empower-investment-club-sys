@@ -5,10 +5,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Statement — <?= htmlspecialchars($member['first_name'].' '.$member['last_name']) ?> · <?= $fyLabel ?></title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-    font-family: 'Segoe UI', Arial, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 10pt;
     color: #1a1a1a;
     background: #e8eaf0;
@@ -39,17 +42,17 @@ body {
 }
 .stmt-header {
     padding: 22px 28px 16px;
-    border-bottom: 4px solid #F47920;
+    border-bottom: 4px solid #B8892B;
     display: flex; align-items: center; justify-content: space-between;
     background: #fff; position: relative; z-index: 1;
 }
 .stmt-logo-area { display: flex; align-items: center; gap: 14px; }
 .stmt-logo-img { height: 52px; width: 52px; object-fit: contain; }
-.stmt-logo-divider { width: 2px; height: 44px; background: #e2e8f0; }
+.stmt-logo-divider { width: 2px; height: 44px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.3rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #F47920; }
-.stmt-brand-tagline { font-size: 0.68rem; color: #64748b; font-style: italic; margin-top: 2px; }
-.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #334155; line-height: 1.7; }
+.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-tagline { font-size: 0.68rem; color: #6E7689; font-style: italic; margin-top: 2px; }
+.stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
 
 .stmt-body { padding: 26px 32px; position: relative; z-index: 1; }
@@ -62,30 +65,30 @@ body {
 .member-info-box {
     display: grid; grid-template-columns: 1fr 1fr;
     gap: 8px 24px; font-size: 0.82rem; margin-bottom: 26px;
-    background: #f8f9fc; padding: 14px 18px; border-radius: 6px; border: 1px solid #e2e8f0;
+    background: #f8f9fc; padding: 14px 18px; border-radius: 6px; border: 1px solid #E5E7F0;
 }
 .member-info-row {
     display: grid; grid-template-columns: 130px 1fr; gap: 0 12px;
-    align-items: baseline; padding-bottom: 4px; border-bottom: 1px dashed #e2e8f0;
+    align-items: baseline; padding-bottom: 4px; border-bottom: 1px dashed #E5E7F0;
 }
 .member-info-row:last-child { border-bottom: none; padding-bottom: 0; }
-.member-info-label { color: #64748b; font-weight: 500; white-space: nowrap; }
-.member-info-val { color: #1e293b; font-weight: 600; }
+.member-info-label { color: #6E7689; font-weight: 500; white-space: nowrap; }
+.member-info-val { color: #171B2E; font-weight: 600; }
 
 .stmt-section-title {
     font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-bottom: 8px;
 }
 
 .stmt-table {
-    width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-bottom: 18px; border: 1px solid #cbd5e1;
+    width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-bottom: 18px; border: 1px solid #E5E7F0;
 }
 .stmt-table th {
     background: #1B2B6B; color: #fff; text-align: center; padding: 8px 10px;
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid #cbd5e1;
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid #E5E7F0;
 }
 .stmt-table th.right { text-align: right; }
 .stmt-table th.left { text-align: left; }
-.stmt-table td { padding: 7px 10px; border: 1px solid #cbd5e1; vertical-align: middle; }
+.stmt-table td { padding: 7px 10px; border: 1px solid #E5E7F0; vertical-align: middle; }
 .stmt-table tr:nth-child(even) td { background: #f8f9fc; }
 .stmt-table .row-opening { background: #f1f5f9 !important; font-weight: 600; }
 .stmt-table .row-closing { background: #e0f2fe !important; font-weight: 700; }
@@ -99,19 +102,19 @@ body {
 .amount-closing { color: #1e3a8a; font-weight: 900; font-size: 0.98rem; }
 
 .tx-summary-bar {
-    background: #f8f9fc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; font-size: 0.8rem;
+    background: #f8f9fc; border: 1px solid #E5E7F0; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; font-size: 0.8rem;
 }
 .tx-summary-title {
     font-weight: 700; color: #1B2B6B; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.08em; margin-bottom: 8px;
 }
 .tx-summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; text-align: center; }
-.tx-summary-item { border-right: 1px solid #e2e8f0; padding-right: 6px; }
+.tx-summary-item { border-right: 1px solid #E5E7F0; padding-right: 6px; }
 .tx-summary-item:last-child { border-right: none; padding-right: 0; }
-.tx-summary-label { color: #64748b; font-size: 0.68rem; margin-bottom: 2px; }
-.tx-summary-val { font-weight: 700; color: #1e293b; font-size: 0.9rem; }
+.tx-summary-label { color: #6E7689; font-size: 0.68rem; margin-bottom: 2px; }
+.tx-summary-val { font-weight: 700; color: #171B2E; font-size: 0.9rem; }
 
 .info-card {
-    border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #fdfdfd; margin-bottom: 22px; font-size: 0.85rem;
+    border: 1px solid #E5E7F0; border-radius: 6px; overflow: hidden; background: #fdfdfd; margin-bottom: 22px; font-size: 0.85rem;
 }
 .info-card-header {
     background: #1B2B6B; color: #fff; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; padding: 8px 14px;
@@ -119,24 +122,24 @@ body {
 .info-card-body { padding: 12px 16px; }
 .info-card-row { display: grid; grid-template-columns: 160px 1fr; gap: 0 12px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
 .info-card-row:last-child { border-bottom: none; padding-bottom: 0; }
-.info-card-label { color: #475569; white-space: nowrap; }
-.info-card-val { font-weight: 600; color: #1e293b; }
+.info-card-label { color: #6B7280; white-space: nowrap; }
+.info-card-val { font-weight: 600; color: #171B2E; }
 .info-card-total {
-    display: flex; justify-content: space-between; padding-top: 8px; margin-top: 3px; border-top: 2px solid #cbd5e1; font-size: 1.02rem; font-weight: 800;
+    display: flex; justify-content: space-between; padding-top: 8px; margin-top: 3px; border-top: 2px solid #E5E7F0; font-size: 1.02rem; font-weight: 800;
 }
 .info-card-total .info-card-label { color: #1B2B6B; font-weight: 800; }
 .info-card-total .info-card-val { color: #1B2B6B; font-size: 1.1rem; font-weight: 900; }
 .info-card-total.asset-total .info-card-label { color: #111827; }
-.info-card-total.asset-total .info-card-val { color: #F47920; }
+.info-card-total.asset-total .info-card-val { color: #171B2E; }
 
 .stmt-footer-note {
-    text-align: center; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #cbd5e1; font-size: 0.75rem; color: #475569; line-height: 1.6;
+    text-align: center; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #E5E7F0; font-size: 0.75rem; color: #6B7280; line-height: 1.6;
 }
 .stmt-footer-note p.disclaimer { font-style: italic; margin-bottom: 3px; }
 .stmt-footer-note p.end-mark { font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-top: 4px; }
 
 .stmt-footer-bar {
-    padding: 12px 28px; border-top: 3px solid #F47920;
+    padding: 12px 28px; border-top: 3px solid #B8892B;
     display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff;
 }
 
@@ -266,7 +269,7 @@ $backUrl = $portalMode
                 <tbody>
                     <?php if (empty($shareLedgerRows)): ?>
                     <tr>
-                        <td colspan="6" class="text-center" style="padding:20px;color:#64748b;font-style:italic;">No share entries recorded.</td>
+                        <td colspan="6" class="text-center" style="padding:20px;color:#6E7689;font-style:italic;">No share entries recorded.</td>
                     </tr>
                     <?php else: foreach ($shareLedgerRows as $row): ?>
                     <tr>
@@ -285,7 +288,7 @@ $backUrl = $portalMode
             <!-- ── MEMBER POSITION (moved here from the Savings Statement) ── -->
             <?php if (($shareCount ?? 0) > 0 || ($totalSavings ?? 0) > 0): ?>
             <div class="table-responsive">
-                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;border:1px solid #cbd5e1;margin-top:22px;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;border:1px solid #E5E7F0;margin-top:22px;">
                 <thead>
                     <tr>
                         <th colspan="2" style="background:#1B2B6B;color:#fff;padding:8px 14px;text-align:left;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Member Position</th>
@@ -293,16 +296,16 @@ $backUrl = $portalMode
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="padding:8px 14px;border:1px solid #e2e8f0;color:#475569;width:50%;">Shares Held</td>
-                        <td style="padding:8px 14px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;text-align:right;"><?= number_format($shareCount ?? 0) ?></td>
+                        <td style="padding:8px 14px;border:1px solid #E5E7F0;color:#6B7280;width:50%;">Shares Held</td>
+                        <td style="padding:8px 14px;border:1px solid #E5E7F0;font-weight:600;color:#171B2E;text-align:right;"><?= number_format($shareCount ?? 0) ?></td>
                     </tr>
                     <tr style="background:#f8f9fc;">
-                        <td style="padding:8px 14px;border:1px solid #e2e8f0;color:#475569;">Share Capital</td>
-                        <td style="padding:8px 14px;border:1px solid #e2e8f0;font-weight:600;color:#1e293b;text-align:right;">UGX <?= number_format($shareCapital ?? 0, 2) ?></td>
+                        <td style="padding:8px 14px;border:1px solid #E5E7F0;color:#6B7280;">Share Capital</td>
+                        <td style="padding:8px 14px;border:1px solid #E5E7F0;font-weight:600;color:#171B2E;text-align:right;">UGX <?= number_format($shareCapital ?? 0, 2) ?></td>
                     </tr>
                     <tr style="background:#f0f7ff;">
-                        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:700;color:#1B2B6B;">Total Assets</td>
-                        <td style="padding:9px 14px;border:1px solid #e2e8f0;font-weight:800;color:#F47920;text-align:right;font-size:0.95rem;">UGX <?= number_format($totalMemberAssets ?? 0, 2) ?></td>
+                        <td style="padding:9px 14px;border:1px solid #E5E7F0;font-weight:700;color:#1B2B6B;">Total Assets</td>
+                        <td style="padding:9px 14px;border:1px solid #E5E7F0;font-weight:800;color:#171B2E;text-align:right;font-size:0.95rem;">UGX <?= number_format($totalMemberAssets ?? 0, 2) ?></td>
                     </tr>
                 </tbody>
             </table>
@@ -376,15 +379,15 @@ $backUrl = $portalMode
                     <tr class="row-opening">
                         <td class="text-center"><?= htmlspecialchars($fyStart) ?></td>
                         <td>Opening Balance</td>
-                        <td class="text-muted" style="color:#94a3af;">—</td>
-                        <td class="text-right text-muted" style="color:#94a3af;">—</td>
-                        <td class="text-right text-muted" style="color:#94a3af;">—</td>
+                        <td class="text-muted" style="color:#6E7689;">—</td>
+                        <td class="text-right text-muted" style="color:#6E7689;">—</td>
+                        <td class="text-right text-muted" style="color:#6E7689;">—</td>
                         <td class="text-right amount-balance"><?= number_format($openingBalance, 2) ?></td>
                     </tr>
 
                     <?php if (empty($transactions)): ?>
                     <tr>
-                        <td colspan="6" class="text-center" style="padding:16px;color:#64748b;font-style:italic;">
+                        <td colspan="6" class="text-center" style="padding:16px;color:#6E7689;font-style:italic;">
                             No transactions during the selected statement period.
                         </td>
                     </tr>
@@ -392,12 +395,12 @@ $backUrl = $portalMode
                         <?php foreach ($transactions as $tx): ?>
                         <tr>
                             <td class="text-center"><?= date('d-M-Y', strtotime($tx['date'])) ?></td>
-                            <td><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:.68rem;color:#64748b;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
+                            <td><?= htmlspecialchars($tx['description']) ?><?php if (($tx['type'] ?? null) === 'opening_balance' && !empty($tx['notes'])): ?><br><span style="font-size:.68rem;color:#6E7689;font-style:italic;"><?= htmlspecialchars($tx['notes']) ?></span><?php endif; ?></td>
                             <td><?= htmlspecialchars($tx['reference']) ?></td>
-                            <td class="text-right <?= $tx['debit'] > 0 ? 'amount-debit' : 'text-muted' ?>" style="<?= $tx['debit'] == 0 ? 'color:#94a3af;' : '' ?>">
+                            <td class="text-right <?= $tx['debit'] > 0 ? 'amount-debit' : 'text-muted' ?>" style="<?= $tx['debit'] == 0 ? 'color:#6E7689;' : '' ?>">
                                 <?= $tx['debit'] > 0 ? number_format($tx['debit'], 2) : '—' ?>
                             </td>
-                            <td class="text-right <?= $tx['credit'] > 0 ? 'amount-credit' : 'text-muted' ?>" style="<?= $tx['credit'] == 0 ? 'color:#94a3af;' : '' ?>">
+                            <td class="text-right <?= $tx['credit'] > 0 ? 'amount-credit' : 'text-muted' ?>" style="<?= $tx['credit'] == 0 ? 'color:#6E7689;' : '' ?>">
                                 <?= $tx['credit'] > 0 ? number_format($tx['credit'], 2) : '—' ?>
                             </td>
                             <td class="text-right amount-balance"><?= number_format($tx['balance'], 2) ?></td>
@@ -418,16 +421,16 @@ $backUrl = $portalMode
 
             <!-- ── END OF STATEMENT DIVIDER ─────────────────── -->
             <div style="text-align:center;margin:28px 0 22px;display:flex;align-items:center;gap:12px;">
-                <div style="flex:1;height:1px;background:#cbd5e1;"></div>
-                <span style="font-size:0.75rem;font-weight:700;letter-spacing:0.12em;color:#475569;text-transform:uppercase;white-space:nowrap;">— End of Statement —</span>
-                <div style="flex:1;height:1px;background:#cbd5e1;"></div>
+                <div style="flex:1;height:1px;background:#E5E7F0;"></div>
+                <span style="font-size:0.75rem;font-weight:700;letter-spacing:0.12em;color:#6B7280;text-transform:uppercase;white-space:nowrap;">— End of Statement —</span>
+                <div style="flex:1;height:1px;background:#E5E7F0;"></div>
             </div>
 
             <!-- ── SUMMARY TABLE (bank-style) ─────────────────── -->
             <div style="margin-bottom:22px;">
                 <div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#1B2B6B;margin-bottom:8px;">Summary</div>
                 <div class="table-responsive">
-                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;border:1px solid #cbd5e1;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;border:1px solid #E5E7F0;">
                     <thead>
                         <tr>
                             <th style="background:#1B2B6B;color:#fff;padding:10px 14px;text-align:center;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;border:1px solid #142057;width:25%;">Opening Balance</th>
@@ -438,10 +441,10 @@ $backUrl = $portalMode
                     </thead>
                     <tbody>
                         <tr>
-                            <td style="padding:12px 14px;text-align:center;border:1px solid #cbd5e1;font-weight:600;color:#1e293b;font-size:0.9rem;"><?= number_format($openingBalance, 2) ?></td>
-                            <td style="padding:12px 14px;text-align:center;border:1px solid #cbd5e1;font-weight:600;color:#dc2626;font-size:0.9rem;"><?= number_format($totalDebits, 2) ?></td>
-                            <td style="padding:12px 14px;text-align:center;border:1px solid #cbd5e1;font-weight:600;color:#16a34a;font-size:0.9rem;"><?= number_format($totalCredits, 2) ?></td>
-                            <td style="padding:12px 14px;text-align:center;border:1px solid #cbd5e1;font-weight:700;color:#1B2B6B;font-size:0.9rem;"><?= number_format($closingBalance, 2) ?></td>
+                            <td style="padding:12px 14px;text-align:center;border:1px solid #E5E7F0;font-weight:600;color:#171B2E;font-size:0.9rem;"><?= number_format($openingBalance, 2) ?></td>
+                            <td style="padding:12px 14px;text-align:center;border:1px solid #E5E7F0;font-weight:600;color:#dc2626;font-size:0.9rem;"><?= number_format($totalDebits, 2) ?></td>
+                            <td style="padding:12px 14px;text-align:center;border:1px solid #E5E7F0;font-weight:600;color:#16a34a;font-size:0.9rem;"><?= number_format($totalCredits, 2) ?></td>
+                            <td style="padding:12px 14px;text-align:center;border:1px solid #E5E7F0;font-weight:700;color:#1B2B6B;font-size:0.9rem;"><?= number_format($closingBalance, 2) ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -450,7 +453,7 @@ $backUrl = $portalMode
             <?php endif; // end of the top-level if ($isSharesOnly) / else block ?>
 
             <!-- ── GENERATED-BY LINE ──────────────────────────── -->
-            <div style="font-size:0.7rem;color:#334155;font-style:italic;margin-bottom:0;">
+            <div style="font-size:0.7rem;color:#6B7280;font-style:italic;margin-bottom:0;">
                 This statement has been generated from Empower Investment Club Management System.
             </div>
 
@@ -467,7 +470,7 @@ $backUrl = $portalMode
 
         <div class="stmt-footer-bar">
             <img src="<?= APP_URL ?>/public/images/logo.png" alt="" style="height:20px;opacity:.35;">
-            <span style="font-size:.72rem;color:#9ca3af;font-style:italic;letter-spacing:.04em;">Unleash your financial potential</span>
+            <span style="font-size:.72rem;color:#6E7689;font-style:italic;letter-spacing:.04em;">Unleash your financial potential</span>
         </div>
     </div>
 </div>

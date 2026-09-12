@@ -285,7 +285,7 @@ if (!function_exists('waNumber')) {
     </div>
 
     <div class="<?= $isChairman ? 'col-xl-4' : ($canSeeLoanWidgets ? 'col-xl-3' : 'col-xl-4') ?> col-6 col-lg-4">
-        <a href="<?= APP_URL ?>/index.php?page=members" class="text-decoration-none">
+        <a href="<?= APP_URL ?>/index.php?page=members&status=dormant" class="text-decoration-none">
             <div class="stat-card h-100">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                     <span class="stat-label">Inactive Members</span>
@@ -1126,7 +1126,7 @@ if (!function_exists('waNumber')) {
                     </span>
                     <a href="<?= APP_URL ?>/index.php?page=repayments"
                        class="btn btn-sm"
-                       style="border:1px solid var(--brand-orange);color:var(--brand-orange)">
+                       style="border:1px solid var(--brand-orange);color:var(--slate)">
                         View All
                     </a>
                     <a href="<?= APP_URL ?>/index.php?page=repayment-add"
@@ -1163,7 +1163,7 @@ if (!function_exists('waNumber')) {
                                 <td class="ps-3">
                                     <a href="<?= APP_URL ?>/index.php?page=repayment-view&id=<?= $rp['id'] ?>"
                                        class="fw-semibold text-decoration-none small"
-                                       style="color:var(--brand-orange)">
+                                       style="color:var(--ink)">
                                         <?= htmlspecialchars($rp['repayment_number']) ?>
                                     </a>
                                 </td>
@@ -1206,7 +1206,7 @@ if (!function_exists('waNumber')) {
                 <h6 class="mb-0 fw-semibold">
                     <i class="bi bi-box-arrow-up-right me-2" style="color:var(--brand-orange)"></i>Recent Withdrawals
                 </h6>
-                <a href="<?= APP_URL ?>/index.php?page=withdrawals" class="btn btn-sm" style="border:1px solid var(--brand-orange);color:var(--brand-orange)">View All</a>
+                <a href="<?= APP_URL ?>/index.php?page=withdrawals" class="btn btn-sm" style="border:1px solid var(--brand-orange);color:var(--slate)">View All</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
