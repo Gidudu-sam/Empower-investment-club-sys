@@ -82,12 +82,17 @@ class DashboardController extends Controller
         // Stage 23 authority is narrower -- Internal Voucher, Loan
         // Application, and Investment approval only (management's explicit
         // decision) -- so Secretary's queue below is filtered to just
-        // those three, never Member Adjustments/Opening Balances/Loans
-        // (Secretary was not granted approval authority over those).
+        // those three, never Member Adjustments/Opening Balances.
+        // 
+        // Multi-Approval Fix (2026-09-16): Secretary and Treasurer participate
+        // in Tier 4 loan approvals (Very Large Loans >= 10M) even though they
+        // don't have general loan approval authority. Show pending loans to
+        // Secretary and Treasurer so they can see loans requiring their approval.
         $pendingApprovals = null;
         $pendingApprovalItems = [];
         $isSecretary = Session::hasRole(['secretary']);
-        if (Session::hasRole(['chairman', 'vice_chairman']) || $isSecretary) {
+        $isTreasurer = Session::hasRole(['treasurer']);
+        if (Session::hasRole(['chairman', 'vice_chairman']) || $isSecretary || $isTreasurer) {
             require_once APP_PATH . '/models/InternalVoucherModel.php';
             require_once APP_PATH . '/models/MemberAccountAdjustmentModel.php';
             require_once APP_PATH . '/models/InvestmentModel.php';
@@ -112,24 +117,24 @@ class DashboardController extends Controller
             $loanApplications = (new LoanApplicationModel())->pendingApproval();
             $investments = (new InvestmentModel())->pendingApproval();
 
-            // Member Adjustments, Opening Balances, and Loans (approval +
-            // disbursement) are Chairman/Vice-Chairman-only per Stage 23's
-            // governance decision -- Secretary was not granted approval
-            // authority over any of these three, so they stay empty for
-            // Secretary rather than showing items she cannot act on.
+            // Member Adjustments and Opening Balances are Chairman/Vice-Chairman-only
+            // per Stage 23's governance decision. Loans have mixed authority:
+            // - Chairman/Vice Chairman have general loan approval authority
+            // - Secretary/Treasurer participate in Tier 4 multi-approvals only
+            // - Show loans to all four roles (they'll see loans requiring their approval)
             $adjustments = [];
             $openingBalances = [];
             $loans = [];
-            if (!$isSecretary) {
+            if (!$isSecretary && !$isTreasurer) {
                 $adjustments = (new MemberAccountAdjustmentModel())->pendingApproval();
                 // Opening Balances: only surfaced now that Stage 7A made the
                 // page itself reachable to chairman (view+approve+reject) --
                 // before that fix this would have been a dead-end "Review" link.
                 $openingBalances = (new OpeningBalanceBatchModel())->pendingApproval();
-                // Loans (Stage 8): real pending_approval rows only -- never a
-                // fake/placeholder count, matching every other type here.
-                $loans = (new LoanModel())->pendingApproval();
             }
+            // Loans: Show to Chairman, Vice Chairman, Secretary, and Treasurer
+            // (all participate in approval workflow)
+            $loans = (new LoanModel())->pendingApproval();
 
             $pendingApprovals = [
                 'vouchers'          => $vouchers,
@@ -439,11 +444,10 @@ class DashboardController extends Controller
                 ['url' => $base . 'statements',                  'label' => 'Statements',        'icon' => 'bi-file-person-fill','class' => 'btn-outline-secondary'],
             ],
             'treasurer' => [
+                ['url' => $base . 'dashboard#pending-approvals', 'label' => 'Pending Approvals',  'icon' => 'bi-check2-square',   'class' => 'btn-primary'],
                 ['url' => $base . 'savings-add',             'label' => 'Record Deposit',     'icon' => 'bi-plus-circle-fill', 'class' => 'btn-success'],
                 ['url' => $base . 'repayment-add',           'label' => 'Record Repayment',   'icon' => 'bi-arrow-down-circle-fill', 'class' => 'btn-warning'],
                 ['url' => $base . 'fee-charge-form',         'label' => 'Record Fee',         'icon' => 'bi-cash-coin',       'class' => 'btn-outline-primary'],
-                ['url' => $base . 'expense-create',          'label' => 'Record Expense',     'icon' => 'bi-receipt',         'class' => 'btn-outline-secondary'],
-                ['url' => $base . 'internal-voucher-create', 'label' => 'New Voucher',        'icon' => 'bi-journal-plus',    'class' => 'btn-outline-primary'],
             ],
             'cashier' => [
                 // 'savings-add' used to route through SavingsController::add(),
