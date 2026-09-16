@@ -326,6 +326,7 @@ $canAdminMember = Session::hasRole(['admin']);
 </div>
 
 <script>
+/* v2.0 - Manual search only */
 (function () {
     'use strict';
 
@@ -341,15 +342,18 @@ $canAdminMember = Session::hasRole(['admin']);
         });
     });
 
-    // Debounced live search
-    let timer;
+    // Manual search only - user presses Enter or clicks Filter button
     const si = document.getElementById('searchInput');
-    const sf = document.getElementById('statusFilter');
     const form = document.getElementById('filterForm');
-    if (si) si.addEventListener('keyup', function () {
-        clearTimeout(timer);
-        timer = setTimeout(function () { form.submit(); }, 450);
-    });
-    if (sf) sf.addEventListener('change', function () { form.submit(); });
+    
+    // Submit on Enter key in search box
+    if (si) {
+        si.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                form.submit();
+            }
+        });
+    }
 })();
 </script>

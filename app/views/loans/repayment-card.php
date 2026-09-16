@@ -476,9 +476,9 @@ foreach (($repayments ?? []) as $r) {
 ?>
 
 <div class="toolbar no-print">
-    <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
-    <a class="btn-back" href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= (int)($loan['id'] ?? 0) ?>">← Back to Loan</a>
-    <button class="btn-close" onclick="window.close()">✕ Close</button>
+    <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+    <a class="btn-back" href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= (int)($loan['id'] ?? 0) ?>">Back to Loan</a>
+    <button class="btn-close" onclick="window.close()">Close</button>
 </div>
 
 <div class="card">
@@ -648,7 +648,8 @@ foreach (($repayments ?? []) as $r) {
                     $rPrin    = $rep ? number_format((float)($rep['principal_paid'] ?? 0), 0) : '';
                     $rInt     = $rep ? number_format((float)($rep['interest_paid']  ?? 0), 0) : '';
                     $rPenalty = $rep ? number_format((float)($rep['penalty_paid']   ?? 0), 0) : '';
-                    $rRef     = $rep ? htmlspecialchars($rep['reference_number'] ?? '') : '';
+                    // Show cash_reference_number for Cash payments, reference_number for others
+                    $rRef     = $rep ? htmlspecialchars($rep['cash_reference_number'] ?? $rep['reference_number'] ?? '') : '';
                     $rTotal   = $rep ? number_format((float)($rep['amount_paid']    ?? 0), 0) : '';
 
                     // Row background based on installment status

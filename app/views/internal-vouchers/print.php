@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#B8892B; }
+        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#FF7E06; }
         * { box-sizing:border-box; margin:0; padding:0; }
         body { background:#eef0f5; font-family:'Inter',sans-serif; font-size:.85rem; color:#1f2937; }
         .voucher-wrap { max-width:640px; margin:1.5rem auto; padding:0 1rem; }

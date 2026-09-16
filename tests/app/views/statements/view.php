@@ -43,7 +43,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 }
 .stmt-header {
     padding: 24px 32px;
-    border-bottom: 4px solid #B8892B;
+    border-bottom: 4px solid #FF7E06;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -55,7 +55,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 .stmt-logo-img { height: 56px; width: 56px; object-fit: contain; }
 .stmt-logo-divider { width: 2px; height: 48px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.35rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-title span { color: #FF7E06; }
 .stmt-brand-tagline { font-size: 0.7rem; color: #6E7689; font-style: italic; margin-top: 3px; }
 .stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
@@ -207,7 +207,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 .info-card-total .info-card-label { color: #1B2B6B; font-weight: 800; }
 .info-card-total .info-card-val { color: #1B2B6B; font-size: 1.2rem; font-weight: 900; }
 .info-card-total.asset-total .info-card-label { color: #111827; }
-.info-card-total.asset-total .info-card-val { color: #B8892B; }
+.info-card-total.asset-total .info-card-val { color: #FF7E06; }
 
 .stmt-footer-note {
     text-align: center;
@@ -223,7 +223,7 @@ if (($_GET['range_mode'] ?? 'fy') === 'custom' && !empty($_GET['date_from']) && 
 
 .stmt-footer-bar {
     padding: 14px 32px;
-    border-top: 3px solid #B8892B;
+    border-top: 3px solid #FF7E06;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -42,7 +42,7 @@ body {
 }
 .stmt-header {
     padding: 22px 28px 16px;
-    border-bottom: 4px solid #B8892B;
+    border-bottom: 4px solid #FF7E06;
     display: flex; align-items: center; justify-content: space-between;
     background: #fff; position: relative; z-index: 1;
 }
@@ -50,7 +50,7 @@ body {
 .stmt-logo-img { height: 52px; width: 52px; object-fit: contain; }
 .stmt-logo-divider { width: 2px; height: 44px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.3rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-title span { color: #FF7E06; }
 .stmt-brand-tagline { font-size: 0.68rem; color: #6E7689; font-style: italic; margin-top: 2px; }
 .stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
@@ -139,7 +139,7 @@ body {
 .stmt-footer-note p.end-mark { font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-top: 4px; }
 
 .stmt-footer-bar {
-    padding: 12px 28px; border-top: 3px solid #B8892B;
+    padding: 12px 28px; border-top: 3px solid #FF7E06;
     display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff;
 }
 
@@ -182,9 +182,9 @@ $backUrl = $portalMode
 
 <div class="page-wrap">
     <div class="toolbar no-print">
-        <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
-        <a class="btn-back" href="<?= htmlspecialchars($backUrl) ?>">← Back</a>
-        <button class="btn-close" onclick="window.close()">✕ Close</button>
+        <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+        <a class="btn-back" href="<?= htmlspecialchars($backUrl) ?>">Back</a>
+        <button class="btn-close" onclick="window.close()">Close</button>
     </div>
 
     <div class="stmt-card">

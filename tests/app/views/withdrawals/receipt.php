@@ -12,7 +12,7 @@ body{background:#f4f4f4;font-family:'Inter',sans-serif;}
 .receipt-wrap{max-width:480px;margin:2rem auto;}
 .receipt{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12);}
 .receipt-header{background:linear-gradient(135deg,#1B2B6B,#253480);color:#fff;padding:2rem 2rem 1.5rem;text-align:center;position:relative;}
-.receipt-header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#B8892B,#FFA14D);}
+.receipt-header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#FF7E06,#FFA14D);}
 .receipt-row{display:grid;grid-template-columns:160px 1fr;gap:0 16px;align-items:baseline;padding:.45rem 0;border-bottom:1px dashed #e9ecef;font-size:.875rem;}
 .receipt-row:last-child{border-bottom:none;}
 .receipt-row .label{color:#6c757d;white-space:nowrap;}

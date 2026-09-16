@@ -220,15 +220,19 @@ $loanData = $preLoan ?? null;
                 <dd class="col-5" id="sumLoanAmt"><?= $loanData ? 'Shs '.number_format($loanData['loan_amount'],2) : '—' ?></dd>
                 <dt class="col-7 text-muted">Total Payable</dt>
                 <dd class="col-5" id="sumTotal"><?= $loanData ? 'Shs '.number_format($loanData['total_payable'],2) : '—' ?></dd>
+                <dt class="col-7 text-muted" id="sumExpectedLabel" style="display:none;">Expected Payment</dt>
+                <dd class="col-5 fw-semibold" style="color:var(--brand-orange)" id="sumExpectedPayment">—</dd>
                 <dt class="col-7 text-muted">Outstanding</dt>
                 <dd class="col-5 fw-bold text-danger" id="sumOutstanding"><?= $loanData ? 'Shs '.number_format($loanData['outstanding'],2) : '—' ?></dd>
-                <dt class="col-7 text-muted">Outstanding Penalty</dt>
+                <dt class="col-7 text-muted" id="sumOutstandingPenaltyLabel" style="display:none;">Outstanding Penalty</dt>
                 <dd class="col-5 fw-bold text-warning" id="sumOutstandingPenalty"><?= ($outstandingPenalty ?? 0) > 0 ? 'Shs '.number_format($outstandingPenalty,2) : 'Shs 0.00' ?></dd>
                 <hr class="my-2">
                 <dt class="col-7 text-muted fw-bold">Paying Now</dt>
                 <dd class="col-5 fw-bold fs-5 mb-1" style="color:var(--brand-orange)" id="sumPaying">Shs 0.00</dd>
-                <dt class="col-7 text-muted">— of which Penalty</dt>
-                <dd class="col-5" id="sumPenaltyPortion">Shs 0.00</dd>
+                <dt class="col-7 text-muted" id="sumPenaltyLabel" style="display:none;">— of which Penalty</dt>
+                <dd class="col-5" id="sumPenaltyPortion" style="display:none;">Shs 0.00</dd>
+                <dt class="col-7 text-muted">— of which Interest</dt>
+                <dd class="col-5" id="sumInterestPortion">Shs 0.00</dd>
                 <dt class="col-7 text-muted">— of which Principal</dt>
                 <dd class="col-5" id="sumPrincipalPortion">Shs 0.00</dd>
                 <dt class="col-7 text-muted">Balance After</dt>
@@ -254,9 +258,18 @@ $loanData = $preLoan ?? null;
 'use strict';
 const fmt = n => parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+const showElement = (id) => { const e=document.getElementById(id); if(e) e.style.display=''; };
+const hideElement = (id) => { const e=document.getElementById(id); if(e) e.style.display='none'; };
 
 let currentOutstanding = <?= $loanData ? (float)$loanData['outstanding'] : 0 ?>;
 let currentOutstandingPenalty = <?= (float)($outstandingPenalty ?? 0) ?>;
+let currentInterestAmount = <?= $loanData ? (float)$loanData['interest_amount'] : 0 ?>;
+let currentInterestPaidTotal = <?= $loanData ? (float)($loanData['interest_paid_total'] ?? 0) : 0 ?>;
+let currentLoanAmount = <?= $loanData ? (float)$loanData['loan_amount'] : 0 ?>;
+let currentLoanStatus = '<?= $loanData['status'] ?? '' ?>';
+let currentMonthlyInstallment = <?= $loanData ? (float)($loanData['monthly_installment'] ?? 0) : 0 ?>;
+let currentWeeklySavingsAmount = <?= $loanData ? (float)($loanData['weekly_savings_amount'] ?? 0) : 0 ?>;
+let currentLoanTypeId = <?= $loanData ? (int)($loanData['loan_type_id'] ?? 1) : 1 ?>;
 
 const amtEl     = document.getElementById('amount_paid');
 const penaltyEl = document.getElementById('penalty_paid');
@@ -279,23 +292,91 @@ const loanId    = document.getElementById('loanId');
 function updatePenaltyFieldVisibility(){
     const group = document.getElementById('penaltyGroup');
     if (!group) return;
-    group.style.display = currentOutstandingPenalty > 0 ? '' : 'none';
+    // Only show penalty field if loan is overdue AND has outstanding penalty
+    const shouldShowPenalty = (currentLoanStatus === 'overdue' && currentOutstandingPenalty > 0);
+    group.style.display = shouldShowPenalty ? '' : 'none';
     if (penaltyEl) penaltyEl.max = currentOutstandingPenalty.toFixed(2);
+    
+    // Update summary labels visibility
+    const penaltyLabel = document.getElementById('sumOutstandingPenaltyLabel');
+    if (penaltyLabel) penaltyLabel.style.display = shouldShowPenalty ? '' : 'none';
+    const penaltyValue = document.getElementById('sumOutstandingPenalty');
+    if (penaltyValue) penaltyValue.style.display = shouldShowPenalty ? '' : 'none';
+    
     setText('sumOutstandingPenalty', 'Shs ' + fmt(currentOutstandingPenalty));
     const hint = document.getElementById('penaltyHint');
     if (hint) hint.textContent = currentOutstandingPenalty > 0
         ? 'Max collectible now: Shs ' + fmt(currentOutstandingPenalty)
         : '';
-    if (currentOutstandingPenalty <= 0 && penaltyEl) penaltyEl.value = '0';
+    if (!shouldShowPenalty && penaltyEl) penaltyEl.value = '0';
+}
+
+function updateExpectedPaymentDisplay(){
+    const expectedLabel = document.getElementById('sumExpectedLabel');
+    const expectedValue = document.getElementById('sumExpectedPayment');
+    
+    if (!expectedLabel || !expectedValue) return;
+    
+    // Determine expected payment based on loan type
+    let expectedPayment = 0;
+    let paymentLabel = 'Expected Payment';
+    
+    if (currentLoanTypeId == 2) {
+        // Business Loan - show weekly savings amount
+        expectedPayment = currentWeeklySavingsAmount;
+        paymentLabel = 'Weekly Payment';
+    } else {
+        // Normal/Asset Financing - show monthly installment
+        expectedPayment = currentMonthlyInstallment;
+        paymentLabel = 'Monthly Installment';
+    }
+    
+    if (expectedPayment > 0) {
+        expectedLabel.textContent = paymentLabel;
+        expectedLabel.style.display = '';
+        expectedValue.textContent = 'Shs ' + fmt(expectedPayment);
+        expectedValue.style.display = '';
+    } else {
+        expectedLabel.style.display = 'none';
+        expectedValue.style.display = 'none';
+    }
 }
 
 function updateSummary(){
     const paying   = parseFloat(amtEl?.value)||0;
     const penalty  = Math.min(parseFloat(penaltyEl?.value)||0, currentOutstandingPenalty, paying);
-    const principal = Math.max(0, paying - penalty);
-    const after    = Math.max(0, currentOutstanding - principal);
+    const nonPenaltyPaid = Math.max(0, paying - penalty);
+    
+    // Calculate interest and principal allocation (same logic as backend)
+    const interestRemaining = Math.max(0, currentInterestAmount - currentInterestPaidTotal);
+    const totalPayableOriginal = currentLoanAmount + currentInterestAmount;
+    
+    let interestPaid = 0.0;
+    if (interestRemaining > 0.005 && totalPayableOriginal > 0 && nonPenaltyPaid > 0) {
+        const interestRatio = currentInterestAmount / totalPayableOriginal;
+        interestPaid = Math.min(
+            Math.round(nonPenaltyPaid * interestRatio * 100) / 100,
+            interestRemaining,
+            nonPenaltyPaid
+        );
+    }
+    const principal = Math.max(0, Math.round((nonPenaltyPaid - interestPaid) * 100) / 100);
+    
+    const after = Math.max(0, currentOutstanding - nonPenaltyPaid);
+    
     setText('sumPaying', 'Shs ' + fmt(paying));
-    setText('sumPenaltyPortion', 'Shs ' + fmt(penalty));
+    
+    // Show/hide penalty row based on whether loan is overdue and has penalty
+    const showPenalty = (currentLoanStatus === 'overdue' && penalty > 0);
+    const penaltyLabel = document.getElementById('sumPenaltyLabel');
+    const penaltyValue = document.getElementById('sumPenaltyPortion');
+    if (penaltyLabel) penaltyLabel.style.display = showPenalty ? '' : 'none';
+    if (penaltyValue) {
+        penaltyValue.style.display = showPenalty ? '' : 'none';
+        penaltyValue.textContent = 'Shs ' + fmt(penalty);
+    }
+    
+    setText('sumInterestPortion', 'Shs ' + fmt(interestPaid));
     setText('sumPrincipalPortion', 'Shs ' + fmt(principal));
     setText('sumAfter',  paying > 0 ? 'Shs ' + fmt(after) : '—');
     const hint = document.getElementById('maxHint');
@@ -307,6 +388,7 @@ function updateSummary(){
 if(amtEl) amtEl.addEventListener('input', updateSummary);
 if(penaltyEl) penaltyEl.addEventListener('input', updateSummary);
 updatePenaltyFieldVisibility();
+updateExpectedPaymentDisplay();
 updateSummary();
 
 // Loan search autocomplete
@@ -354,7 +436,15 @@ function selectLoan(l){
     if(dropdown)    dropdown.style.display = 'none';
     currentOutstanding = parseFloat(l.outstanding)||0;
     currentOutstandingPenalty = parseFloat(l.outstanding_penalty)||0;
+    currentInterestAmount = parseFloat(l.interest_amount)||0;
+    currentInterestPaidTotal = parseFloat(l.interest_paid_total)||0;
+    currentLoanAmount = parseFloat(l.loan_amount)||0;
+    currentLoanStatus = l.status || '';
+    currentMonthlyInstallment = parseFloat(l.monthly_installment)||0;
+    currentWeeklySavingsAmount = parseFloat(l.weekly_savings_amount)||0;
+    currentLoanTypeId = parseInt(l.loan_type_id)||1;
     updatePenaltyFieldVisibility();
+    updateExpectedPaymentDisplay();
 
     // Populate card
     if(loanContent) loanContent.innerHTML =
@@ -409,7 +499,15 @@ document.getElementById('clearLoan')?.addEventListener('click', () => {
     if(searchEl) searchEl.value = '';
     currentOutstanding = 0;
     currentOutstandingPenalty = 0;
+    currentInterestAmount = 0;
+    currentInterestPaidTotal = 0;
+    currentLoanAmount = 0;
+    currentLoanStatus = '';
+    currentMonthlyInstallment = 0;
+    currentWeeklySavingsAmount = 0;
+    currentLoanTypeId = 1;
     updatePenaltyFieldVisibility();
+    updateExpectedPaymentDisplay();
     setText('sumLoanNo','—'); setText('sumMember','—');
     setText('sumOutstanding','—'); setText('sumPaying','Shs 0.00'); setText('sumAfter','—');
     updateSummary();
@@ -456,7 +554,8 @@ if (payTypeSelect) {
         const penaltyGroup = document.getElementById('penaltyGroup');
         const penaltyApplies = (val === 'installment' || val === 'settlement');
         if (penaltyGroup) {
-            penaltyGroup.style.display = (penaltyApplies && currentOutstandingPenalty > 0) ? '' : 'none';
+            // Only show penalty if: payment type allows it AND loan is overdue AND has outstanding penalty
+            penaltyGroup.style.display = (penaltyApplies && currentLoanStatus === 'overdue' && currentOutstandingPenalty > 0) ? '' : 'none';
         }
         if (!penaltyApplies && penaltyEl) penaltyEl.value = '0';
         updateSummary();

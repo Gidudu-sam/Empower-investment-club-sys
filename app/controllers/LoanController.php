@@ -525,6 +525,8 @@ class LoanController extends Controller
             'id'             => $memberId,
             'member_number'  => $m['member_number'],
             'account_number' => $m['account_number'] ?? '',
+            'first_name'     => $m['first_name'] ?? '',
+            'last_name'      => $m['last_name'] ?? '',
             'full_name'      => $m['first_name'] . ' ' . $m['last_name'],
             'phone'          => $m['phone'],
             'status'         => $m['status'] ?? 'active',

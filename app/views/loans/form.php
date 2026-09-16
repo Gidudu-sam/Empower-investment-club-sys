@@ -705,7 +705,15 @@ HTML;
                 <dd class="col-5 fw-semibold" style="color:var(--brand-navy)"><?= htmlspecialchars($loanNumber) ?></dd>
 
                 <dt class="col-7 text-muted">Member</dt>
-                <dd class="col-5" id="previewMember"><?= $preselected ? htmlspecialchars($preselected['first_name'].' '.$preselected['last_name']) : '—' ?></dd>
+                <dd class="col-5" id="previewMember"><?php 
+                    if ($preselected) {
+                        echo htmlspecialchars(($preselected['first_name'] ?? '') . ' ' . ($preselected['last_name'] ?? ''));
+                    } elseif (isset($loan['first_name'])) {
+                        echo htmlspecialchars(($loan['first_name'] ?? '') . ' ' . ($loan['last_name'] ?? ''));
+                    } else {
+                        echo '—';
+                    }
+                ?></dd>
 
                 <dt class="col-7 text-muted">Issue Date</dt>
                 <dd class="col-5" id="previewIssue"><?= $v('issue_date', date('d M Y')) ?></dd>
@@ -917,17 +925,6 @@ if (loanTypeEl) {
                     if (productRepaymentType === 'interest_only') {
                         info += ' <span class="badge bg-info-subtle text-info" style="font-size:.55rem;">Interest Only Monthly</span>';
                     }
-                    info += '<br>';
-                    if (productBrackets.length === 1 && parseFloat(productBrackets[0].min_amount) === 0) {
-                        info += 'Rate: ' + productBrackets[0].monthly_rate + '% flat/mo';
-                    } else {
-                        productBrackets.forEach(b => {
-                            const min = parseInt(b.min_amount).toLocaleString();
-                            const max = parseFloat(b.max_amount) > 0 ? parseInt(b.max_amount).toLocaleString() : '∞';
-                            info += min + ' – ' + max + ': <strong>' + b.monthly_rate + '%</strong> · ';
-                        });
-                    }
-                    info += '<br>Fee: ' + productProcessingFee + '% · Period: ' + s.min_period_months + '–' + s.max_period_months + ' mo';
                     document.getElementById('productInfo').innerHTML = info;
                 }
                 recalc();
@@ -1055,10 +1052,10 @@ function recalc(){
             rateOverrideIndicatorEl.textContent = '';
             if (rateOverrideReasonGroupEl) rateOverrideReasonGroupEl.style.display = 'none';
         } else if (Math.abs(monthlyRate - suggestedRate) > 0.0001) {
-            rateOverrideIndicatorEl.innerHTML = '<span class="text-warning">⚠ Rate adjusted from ' + fmtPct(suggestedRate) + '% to ' + fmtPct(monthlyRate) + '%</span>';
+            rateOverrideIndicatorEl.innerHTML = '<span class="text-warning">Rate adjusted from ' + fmtPct(suggestedRate) + '% to ' + fmtPct(monthlyRate) + '%</span>';
             if (rateOverrideReasonGroupEl) rateOverrideReasonGroupEl.style.display = '';
         } else {
-            rateOverrideIndicatorEl.innerHTML = '<span class="text-success">✓ Using product rate</span>';
+            rateOverrideIndicatorEl.innerHTML = '<span class="text-success">Using product rate</span>';
             if (rateOverrideReasonGroupEl) rateOverrideReasonGroupEl.style.display = 'none';
         }
     }
@@ -1287,7 +1284,7 @@ function buildMemberCardHtml(m){
             <div class="text-muted mt-1" style="font-size:.72rem">${escHtml(m.member_number||'')}</div>
           </div>
           <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1"
-                style="font-size:.62rem;white-space:nowrap">✓ Selected</span>
+                style="font-size:.62rem;white-space:nowrap">Selected</span>
         </div>
         <div class="row g-3" style="font-size:.82rem;">
           <div class="col-6 col-md-4">
@@ -1389,9 +1386,9 @@ function lookupByAccount(){
         .then(data => {
             if(data.member){
                 selectMember(data.member);
-                setLookupMsg('✓ Member found: ' + data.member.full_name, 'text-success');
+                setLookupMsg('Member found: ' + data.member.full_name, 'text-success');
             } else {
-                setLookupMsg('✗ No member found with account number "' + val + '"', 'text-danger');
+                setLookupMsg('No member found with account number "' + val + '"', 'text-danger');
             }
         }).catch(()=>{ setLookupMsg('Error during lookup. Please try again.', 'text-danger'); });
 }

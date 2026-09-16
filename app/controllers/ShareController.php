@@ -143,6 +143,7 @@ class ShareController extends Controller
             'topShareholders' => $top,
             'canRecordHistorical' => Session::hasRole(['admin', 'treasurer']),
             'canRecordTransaction' => Session::hasRole(['admin', 'treasurer', 'cashier', 'office_admin']),
+            'csrfToken'    => $this->getCsrf(),
         ]);
     }
 

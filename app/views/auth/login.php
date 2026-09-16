@@ -14,7 +14,7 @@
             --navy-950: #0B1229;
             --navy-900: #101A3D;
             --navy-800: #182552;
-            --gold: #B8892B;
+            --gold: #FF7E06;
             --gold-deep: #8F6A1E;
             --gold-soft: #F4E9D2;
             --paper: #F5F6FA;

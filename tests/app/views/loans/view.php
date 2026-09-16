@@ -428,11 +428,11 @@ $subtitle = '<a href="' . $base . '?page=member-view&id=' . $loan['member_id'] .
     <div class="card-body p-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="d-flex gap-3">
-                <span class="badge bg-success px-2 py-1" style="font-size:.72rem">✅ <?= $paidCount ?> Paid</span>
+                <span class="badge bg-success px-2 py-1" style="font-size:.72rem"><?= $paidCount ?> Paid</span>
                 <?php if ($overdueCount > 0): ?>
-                <span class="badge bg-danger px-2 py-1" style="font-size:.72rem">❌ <?= $overdueCount ?> Missed</span>
+                <span class="badge bg-danger px-2 py-1" style="font-size:.72rem"><?= $overdueCount ?> Missed</span>
                 <?php endif; ?>
-                <span class="badge bg-secondary px-2 py-1" style="font-size:.72rem">⏳ <?= $pendingCount ?> Pending</span>
+                <span class="badge bg-secondary px-2 py-1" style="font-size:.72rem"><?= $pendingCount ?> Pending</span>
             </div>
             <span class="fw-bold small"><?= $progressPct ?>%</span>
         </div>

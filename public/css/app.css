@@ -21,7 +21,7 @@
      * AA (~4.55:1). */
     --slate-soft:  #6E7689;
     --hairline:    #E5E7F0;
-    --gold:        #B8892B;
+    --gold:        #FF7E06;
     --gold-deep:   #8F6A1E;
     --gold-soft:   #F4E9D2;
     --green:       #2F6B4F;
@@ -245,6 +245,7 @@ nav.sb-topnav {
 #layoutSidenav_content {
     margin-left: var(--sidebar-width);
     margin-top: var(--nav-height);
+    padding-top: 1.5rem;
     flex: 1;
     min-width: 0;
     display: flex;
@@ -252,7 +253,7 @@ nav.sb-topnav {
     min-height: calc(100vh - var(--nav-height));
     transition: margin .2s ease;
 }
-#layoutSidenav_content main { flex: 1; padding-bottom: 2rem; }
+#layoutSidenav_content main { flex: 1; padding-bottom: 2rem; padding-top: 0.5rem; }
 
 body.sb-sidenav-toggled #layoutSidenav_nav { transform: translateX(calc(var(--sidebar-width) * -1)); }
 body.sb-sidenav-toggled #layoutSidenav_content { margin-left: 0; }

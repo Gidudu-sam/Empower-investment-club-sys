@@ -19,6 +19,7 @@
  */
 $icon         = $icon ?? null;
 $iconStyle    = $iconStyle ?? null;
+$title        = $title ?? ($pageTitle ?? 'Page Title');
 $titleTag     = $titleTag ?? 'h3';
 $titleClass   = $titleClass ?? 'mb-1 fw-bold text-gray-800';
 $titleStyle   = $titleStyle ?? null;

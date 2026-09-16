@@ -22,12 +22,12 @@ body { font-family: 'Inter', sans-serif; font-size: 10pt; color: #1a1a1a; backgr
 
 .stmt-card { background: #fff; border: 2px solid #1B2B6B; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,.18); position: relative; overflow: hidden; }
 .stmt-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 360px; height: 360px; object-fit: contain; opacity: 0.04; pointer-events: none; z-index: 0; }
-.stmt-header { padding: 22px 28px 16px; border-bottom: 4px solid #B8892B; display: flex; align-items: center; justify-content: space-between; background: #fff; position: relative; z-index: 1; }
+.stmt-header { padding: 22px 28px 16px; border-bottom: 4px solid #FF7E06; display: flex; align-items: center; justify-content: space-between; background: #fff; position: relative; z-index: 1; }
 .stmt-logo-area { display: flex; align-items: center; gap: 14px; }
 .stmt-logo-img { height: 52px; width: 52px; object-fit: contain; }
 .stmt-logo-divider { width: 2px; height: 44px; background: #E5E7F0; }
 .stmt-brand-title { font-size: 1.3rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #B8892B; }
+.stmt-brand-title span { color: #FF7E06; }
 .stmt-brand-tagline { font-size: 0.68rem; color: #6E7689; font-style: italic; margin-top: 2px; }
 .stmt-contact-info { text-align: right; font-size: 0.78rem; color: #6B7280; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
@@ -59,7 +59,7 @@ body { font-family: 'Inter', sans-serif; font-size: 10pt; color: #1a1a1a; backgr
 .stmt-footer-note { text-align: center; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #E5E7F0; font-size: 0.75rem; color: #6B7280; line-height: 1.6; }
 .stmt-footer-note p.disclaimer { font-style: italic; margin-bottom: 3px; }
 .stmt-footer-note p.end-mark { font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #1B2B6B; margin-top: 4px; }
-.stmt-footer-bar { padding: 12px 28px; border-top: 3px solid #B8892B; display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff; }
+.stmt-footer-bar { padding: 12px 28px; border-top: 3px solid #FF7E06; display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff; }
 
 @media print {
     @page { size: A4 portrait; margin: 8mm 8mm 10mm; }
@@ -76,8 +76,8 @@ body { font-family: 'Inter', sans-serif; font-size: 10pt; color: #1a1a1a; backgr
 
 <div class="page-wrap">
     <div class="toolbar no-print" style="flex-wrap:wrap;align-items:center;">
-        <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
-        <button class="btn-close" onclick="window.close()">✕ Close</button>
+        <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+        <button class="btn-close" onclick="window.close()">Close</button>
         <form method="GET" style="display:flex;gap:.4rem;align-items:center;margin-left:auto;">
             <input type="hidden" name="page" value="savings-account-statement">
             <input type="hidden" name="id" value="<?= (int)$account['id'] ?>">

@@ -105,7 +105,7 @@ $pct          = $trueTotal > 0 ? min(100, round(($paid / $trueTotal) * 100)) : (
                     </td>
                     <td class="d-none d-md-table-cell small"><?= htmlspecialchars($r['payment_method']) ?></td>
                     <td class="d-none d-lg-table-cell text-muted small">
-                        <?= $r['reference_number'] ? htmlspecialchars($r['reference_number']) : '—' ?>
+                        <?= ($r['cash_reference_number'] ?? $r['reference_number']) ? htmlspecialchars($r['cash_reference_number'] ?? $r['reference_number']) : '—' ?>
                     </td>
                     <td class="d-none d-lg-table-cell text-muted small">
                         <?= htmlspecialchars($r['cashier_name'] ?? '—') ?>

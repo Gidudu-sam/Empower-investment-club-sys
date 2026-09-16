@@ -108,7 +108,7 @@ $base      = APP_URL . '/index.php';
         </div>
 
         <!-- ── Fixed Deposit ──────────────────────────────────────── -->
-        <div class="acct-type-card" style="--acc:#B8892B; --acc-soft:#f9f1e0;">
+        <div class="acct-type-card" style="--acc:#FF7E06; --acc-soft:#f9f1e0;">
             <div class="acct-type-icon"><i class="bi bi-safe"></i></div>
             <p class="acct-type-title">Fixed Deposit</p>
             <p class="acct-type-desc">

@@ -81,7 +81,7 @@ $fullName = $m['first_name'] . ' ' . $m['last_name'];
             <td width="2%"></td>
             <td width="33%" style="background:#fff7ec;border:1px solid #f4dcb8;padding:12px;text-align:center;">
                 <div style="font-size:10px;color:#8f6a1e;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Total Assets</div>
-                <div style="font-size:16px;font-weight:800;color:#b8892b;">Shs <?= number_format($totalMemberAssets, 0) ?></div>
+                <div style="font-size:16px;font-weight:800;color:#FF7E06;">Shs <?= number_format($totalMemberAssets, 0) ?></div>
             </td>
             <?php else: ?>
             <td width="48%" style="background:#f8f9fc;border:1px solid #e2e8f0;padding:12px;text-align:center;">

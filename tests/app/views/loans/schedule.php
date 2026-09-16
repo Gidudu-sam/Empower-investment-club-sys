@@ -54,7 +54,7 @@ body {
 .card-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     padding: 14px 20px 10px;
-    border-bottom: 4px solid #B8892B;
+    border-bottom: 4px solid #FF7E06;
     position: relative; z-index: 1; background: #fff;
 }
 .header-left { display: flex; align-items: center; gap: 14px; }
@@ -63,7 +63,7 @@ body {
     font-size: 1.45rem; font-weight: 900; color: #1B2B6B;
     text-transform: uppercase; line-height: 1; letter-spacing: .02em;
 }
-.brand-name span { color: #B8892B; }
+.brand-name span { color: #FF7E06; }
 .brand-sub { font-size: .72rem; color: #444; line-height: 1.65; margin-top: 3px; }
 .header-stamp {
     border: 1.5px solid #bbb; border-radius: 4px;
@@ -76,7 +76,7 @@ body {
 .doc-title-bar {
     background: #fff; text-align: center;
     padding: 8px 0 6px;
-    border-bottom: 2px solid #B8892B;
+    border-bottom: 2px solid #FF7E06;
     position: relative; z-index: 1;
 }
 .doc-title-text {
@@ -123,7 +123,7 @@ body {
     text-transform: uppercase; letter-spacing: .07em; color: #fff;
 }
 .summary-card-header.navy  { background: #1B2B6B; }
-.summary-card-header.orange { background: #B8892B; }
+.summary-card-header.orange { background: #FF7E06; }
 .summary-card-header.green  { background: #16a34a; }
 .summary-card-header.red    { background: #dc2626; }
 .summary-card-val {
@@ -203,7 +203,7 @@ body {
 
 /* ── Footer bar ──────────────────────────────────────── */
 .card-footer {
-    border-top: 4px solid #B8892B; padding: 8px 20px;
+    border-top: 4px solid #FF7E06; padding: 8px 20px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     background: #fff;
 }
@@ -237,10 +237,10 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
 
 <!-- Toolbar -->
 <div class="toolbar no-print">
-    <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
-    <button class="btn-wa"    onclick="shareWhatsApp()">💬 Share WhatsApp</button>
-    <a class="btn-back" href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= $loan['id'] ?>">← Back to Loan</a>
-    <button class="btn-close" onclick="window.close()">✕ Close</button>
+    <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+    <button class="btn-wa"    onclick="shareWhatsApp()">Share WhatsApp</button>
+    <a class="btn-back" href="<?= APP_URL ?>/index.php?page=loan-view&id=<?= $loan['id'] ?>">Back to Loan</a>
+    <button class="btn-close" onclick="window.close()">Close</button>
 </div>
 
 <div class="page-wrap">
@@ -310,21 +310,17 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
         <!-- Summary Cards -->
         <div class="summary-row">
             <div class="summary-card">
-                <div class="summary-card-header navy">Total Scheduled</div>
+                <div class="summary-card-header navy">Loan Amount</div>
+                <div class="summary-card-val">UGX <?= number_format($loan['loan_amount'], 0) ?></div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-header orange">Total Repayable</div>
                 <div class="summary-card-val">UGX <?= number_format($totalScheduled, 0) ?></div>
             </div>
             <div class="summary-card">
-                <div class="summary-card-header green">Total Paid</div>
-                <div class="summary-card-val" style="color:#16a34a;">UGX <?= number_format($totalPaid, 0) ?></div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-header red">Balance</div>
-                <div class="summary-card-val" style="color:#dc2626;">UGX <?= number_format($totalBalance, 0) ?></div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-header orange">Installments</div>
-                <div class="summary-card-val" style="font-size:.72rem;color:#555;">
-                    <?= $countPaid ?> Paid &nbsp;·&nbsp; <?= $countOverdue ?> Overdue &nbsp;·&nbsp; <?= $countPending ?> Pending
+                <div class="summary-card-header navy">Installments</div>
+                <div class="summary-card-val" style="font-size:.85rem;color:#555;">
+                    <?= count($installments) ?> Monthly Payments
                 </div>
             </div>
         </div>
@@ -336,19 +332,16 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
                 <table class="sched-table">
                 <thead>
                     <tr>
-                        <th style="width:8%;">#</th>
-                        <th style="width:20%;">Due Date</th>
-                        <th style="width:17%;">Principal</th>
-                        <th style="width:15%;">Interest</th>
-                        <th style="width:17%;">Amount Due</th>
-                        <th style="width:17%;">Amount Paid</th>
-                        <th style="width:12%;">Status</th>
+                        <th style="width:12%;">#</th>
+                        <th style="width:35%;">Due Date</th>
+                        <th style="width:30%;">Amount Due</th>
+                        <th style="width:23%;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($installments)): ?>
                     <tr>
-                        <td colspan="7" style="padding:18px;color:#6E7689;font-style:italic;text-align:center;">
+                        <td colspan="4" style="padding:18px;color:#6E7689;font-style:italic;text-align:center;">
                             <?= htmlspecialchars($scheduleNotice ?? 'No installment schedule has been generated for this loan.') ?>
                         </td>
                     </tr>
@@ -371,17 +364,11 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
                                 default   => 'Pending'
                             };
                             $amtDue  = (float)($inst['amount_due']  ?? 0);
-                            $amtPaid = (float)($inst['amount_paid'] ?? 0);
-                            $iDue    = (float)($inst['interest_due']  ?? 0);
-                            $pDue    = (float)($inst['principal_due'] ?? ($amtDue - $iDue));
                         ?>
                         <tr class="<?= $rowClass ?>">
                             <td style="font-weight:800;"><?= $inst['installment_no'] ?></td>
                             <td><?= htmlspecialchars($inst['due_date']) ?></td>
-                            <td class="text-right"><?= number_format($pDue, 0) ?></td>
-                            <td class="text-right"><?= number_format($iDue, 0) ?></td>
-                            <td class="text-right" style="font-weight:700;"><?= number_format($amtDue, 0) ?></td>
-                            <td class="text-right" style="color:#16a34a;font-weight:700;"><?= number_format($amtPaid, 0) ?></td>
+                            <td class="text-right" style="font-weight:700;font-size:.95rem;"><?= number_format($amtDue, 0) ?></td>
                             <td><span class="badge <?= $badgeClass ?>"><?= $badgeLabel ?></span></td>
                         </tr>
                         <?php endforeach; ?>
@@ -390,10 +377,7 @@ $countPending   = count($installments) - $countPaid - $countOverdue;
                 <tfoot>
                     <tr>
                         <td colspan="2" class="text-right" style="font-weight:800;">TOTAL</td>
-                        <td class="text-right"></td>
-                        <td class="text-right"></td>
-                        <td class="text-right" style="color:#1B2B6B;">UGX <?= number_format($totalScheduled, 0) ?></td>
-                        <td class="text-right" style="color:#16a34a;">UGX <?= number_format($totalPaid, 0) ?></td>
+                        <td class="text-right" style="color:#1B2B6B;font-weight:800;font-size:1rem;">UGX <?= number_format($totalScheduled, 0) ?></td>
                         <td></td>
                     </tr>
                 </tfoot>

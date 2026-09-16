@@ -12,8 +12,8 @@
         :root {
             --navy: #1B2B6B;
             --navy-dark: #0B1229;
-            --orange:#B8892B;
-            --gold: #B8892B;
+            --orange:#FF7E06;
+            --gold: #FF7E06;
             --paper: #FAFBFE;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }

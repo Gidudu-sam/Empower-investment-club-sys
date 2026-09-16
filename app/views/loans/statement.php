@@ -15,6 +15,9 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
 ?>
 
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+* { font-family: 'Inter', sans-serif; }
 .stmt-container { max-width: 920px; margin: 0 auto; }
 .stmt-card {
     background: #fff;
@@ -32,7 +35,7 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
 }
 .stmt-header {
     padding: 24px 32px;
-    border-bottom: 4px solid #F47920;
+    border-bottom: 4px solid #FF7E06;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -43,8 +46,8 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
 .stmt-logo-area { display: flex; align-items: center; gap: 16px; }
 .stmt-logo-img { height: 56px; width: 56px; object-fit: contain; }
 .stmt-logo-divider { width: 2px; height: 48px; background: #e2e8f0; }
-.stmt-brand-title { font-size: 1.35rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
-.stmt-brand-title span { color: #F47920; }
+.stmt-brand-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.35rem; font-weight: 900; color: #1B2B6B; text-transform: uppercase; line-height: 1.1; letter-spacing: 0.02em; }
+.stmt-brand-title span { color: #FF7E06; }
 .stmt-brand-tagline { font-size: 0.7rem; color: #64748b; font-style: italic; margin-top: 3px; }
 .stmt-contact-info { text-align: right; font-size: 0.78rem; color: #334155; line-height: 1.7; }
 .stmt-contact-info strong { color: #1B2B6B; }
@@ -169,7 +172,7 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
     text-align: center;
 }
 .summary-highlight-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-.summary-highlight-value { font-size: 1.15rem; font-weight: 800; color: #1B2B6B; }
+.summary-highlight-value { font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 800; color: #1B2B6B; }
 .summary-highlight-value.danger { color: #dc2626; font-size: 1.3rem; }
 
 .summary-grid-2 {
@@ -214,7 +217,7 @@ $statusLabel = $status === 'overdue' ? 'In Arrears' : ucfirst($status);
 
 .stmt-footer-bar {
     padding: 14px 32px;
-    border-top: 3px solid #F47920;
+    border-top: 3px solid #FF7E06;
     display: flex;
     align-items: center;
     justify-content: center;

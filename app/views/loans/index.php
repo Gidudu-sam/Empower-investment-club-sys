@@ -15,11 +15,11 @@ function loanStatusLabel(string $s): string {
     return $s === 'pending_approval' ? 'Pending Approval' : ucfirst($s);
 }
 function daysLabel(int $d): string {
-    if ($d < 0)   return '<span class="badge bg-danger rounded-pill">⚠️ '.abs($d).'d overdue</span>';
-    if ($d === 0) return '<span class="badge bg-danger rounded-pill">🔴 Due Today</span>';
-    if ($d <= 3)  return '<span class="badge bg-warning text-dark rounded-pill">🟡 '.$d.'d left</span>';
-    if ($d <= 7)  return '<span class="badge bg-info text-dark rounded-pill">🔵 '.$d.'d left</span>';
-    return '<span class="text-muted small">🟢 '.date('d M Y', strtotime('+'.$d.' days')).'</span>';
+    if ($d < 0)   return '<span class="badge bg-danger rounded-pill">'.abs($d).'d overdue</span>';
+    if ($d === 0) return '<span class="badge bg-danger rounded-pill">Due Today</span>';
+    if ($d <= 3)  return '<span class="badge bg-warning text-dark rounded-pill">'.$d.'d left</span>';
+    if ($d <= 7)  return '<span class="badge bg-info text-dark rounded-pill">'.$d.'d left</span>';
+    return '<span class="text-muted small">'.date('d M Y', strtotime('+'.$d.' days')).'</span>';
 }
 // Matches LoanController::requireWriteAccess() / delete() exactly.
 $canEditLoan = Session::hasRole(['admin', 'treasurer', 'loans_officer']);

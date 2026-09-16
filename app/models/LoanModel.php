@@ -6,6 +6,21 @@ class LoanModel extends Model
 {
     protected string $table      = 'loans';
     protected string $primaryKey = 'id';
+    
+    private ?ApprovalService $approvalService = null;
+    
+    /**
+     * Get ApprovalService instance (lazy initialization).
+     * Stage 3 — V2.1 Multi-Level Approval Integration
+     */
+    private function getApprovalService(): ApprovalService
+    {
+        if ($this->approvalService === null) {
+            require_once APP_PATH . '/services/ApprovalService.php';
+            $this->approvalService = new ApprovalService($this->db);
+        }
+        return $this->approvalService;
+    }
 
     // ================================================================
     // LOAN NUMBER GENERATION
@@ -187,6 +202,14 @@ class LoanModel extends Model
     // controller, so it can't be bypassed by any future second entry point.
     // ================================================================
 
+    /**
+     * Submit a loan for approval.
+     * 
+     * Stage 3 — V2.1 Multi-Level Approval Integration:
+     * Creates an approval round via ApprovalService, which determines the
+     * applicable tier, enforces officer-borrower governance, and creates
+     * the required slot instances.
+     */
     public function submit(int $id, int $userId): void
     {
         $loan = $this->find($id);
@@ -197,12 +220,30 @@ class LoanModel extends Model
             throw new InvalidArgumentException("Only a draft or rejected loan can be submitted for approval (current status: {$loan['status']}).");
         }
 
+        // Stage 3: Create approval round via ApprovalService
+        // This enforces officer-borrower blocking, determines tier, creates slots
+        try {
+            $roundId = $this->getApprovalService()->submitForApproval($id, $userId);
+        } catch (RuntimeException $e) {
+            // Officer-borrower blocked, policy error, or other validation failure
+            throw new InvalidArgumentException($e->getMessage());
+        }
+
+        // Update loan status (legacy field compatibility)
         $this->db->prepare(
             "UPDATE `loans` SET status = 'pending_approval', submitted_at = NOW(),
              rejected_by = NULL, rejected_at = NULL, rejection_reason = NULL WHERE id = ?"
         )->execute([$id]);
     }
 
+    /**
+     * Record an approval action for a loan.
+     * 
+     * Stage 3 — V2.1 Multi-Level Approval Integration:
+     * Routes through ApprovalService, which enforces maker-checker, role matching,
+     * one-person-one-slot, and alternative slot logic. Only updates loan status to
+     * 'approved' when ALL required slots are satisfied.
+     */
     public function approve(int $id, int $userId): void
     {
         $loan = $this->find($id);
@@ -212,15 +253,42 @@ class LoanModel extends Model
         if ($loan['status'] !== 'pending_approval') {
             throw new InvalidArgumentException("Only a pending-approval loan can be approved (current status: {$loan['status']}).");
         }
-        if ((int)$loan['recorded_by'] === $userId) {
-            throw new InvalidArgumentException('You cannot approve a loan you created yourself. Ask another approver to review it.');
+
+        // Stage 3: Record approval via ApprovalService
+        // This enforces all approval rules (maker-checker, role matching, etc.)
+        try {
+            $result = $this->getApprovalService()->recordApproval($id, $userId);
+        } catch (RuntimeException $e) {
+            throw new InvalidArgumentException($e->getMessage());
         }
 
-        $this->db->prepare(
-            "UPDATE `loans` SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?"
-        )->execute([$userId, $id]);
+        // Only update loan to 'approved' if ALL required approvals are complete
+        if ($result['approval_complete']) {
+            // Get the most recent approver for legacy approved_by field
+            $stmt = $this->db->prepare("
+                SELECT user_id 
+                FROM approval_actions 
+                WHERE approval_round_id = ? AND action_type = 'approved'
+                ORDER BY created_at DESC 
+                LIMIT 1
+            ");
+            $stmt->execute([$result['round_id']]);
+            $lastApproverId = $stmt->fetchColumn();
+
+            $this->db->prepare(
+                "UPDATE `loans` SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?"
+            )->execute([$lastApproverId ?: $userId, $id]);
+        }
+        // If not complete, loan remains in 'pending_approval' status
     }
 
+    /**
+     * Record a rejection action for a loan.
+     * 
+     * Stage 3 — V2.1 Multi-Level Approval Integration:
+     * Routes through ApprovalService, which records the rejection action
+     * and marks the approval round as rejected.
+     */
     public function reject(int $id, int $userId, string $reason): void
     {
         if (trim($reason) === '') {
@@ -234,6 +302,14 @@ class LoanModel extends Model
             throw new InvalidArgumentException("Only a pending-approval loan can be rejected (current status: {$loan['status']}).");
         }
 
+        // Stage 3: Record rejection via ApprovalService
+        try {
+            $this->getApprovalService()->recordRejection($id, $userId, $reason);
+        } catch (RuntimeException $e) {
+            throw new InvalidArgumentException($e->getMessage());
+        }
+
+        // Update loan status (legacy field compatibility)
         $this->db->prepare(
             "UPDATE `loans` SET status = 'rejected', rejected_by = ?, rejected_at = NOW(), rejection_reason = ? WHERE id = ?"
         )->execute([$userId, $reason, $id]);
@@ -290,6 +366,39 @@ class LoanModel extends Model
             }
             if ($loan['status'] !== 'approved') {
                 throw new InvalidArgumentException("Only an approved loan can be disbursed (current status: {$loan['status']}).");
+            }
+
+            // Stage 3: Verify approval is complete via ApprovalService
+            // This ensures disbursement cannot proceed even if legacy status field
+            // was manipulated to 'approved' without completing all required approvals
+            try {
+                $round = $this->db->prepare("
+                    SELECT id 
+                    FROM transaction_approval_rounds 
+                    WHERE transaction_type = 'loan' 
+                      AND transaction_id = ? 
+                      AND approval_status = 'approved'
+                    ORDER BY round_number DESC 
+                    LIMIT 1
+                ");
+                $round->execute([$id]);
+                $roundId = $round->fetchColumn();
+                
+                if ($roundId === false) {
+                    throw new InvalidArgumentException(
+                        "Loan {$loan['loan_number']} has no completed approval round. " .
+                        "Disbursement requires full multi-level approval."
+                    );
+                }
+                
+                if (!$this->getApprovalService()->isApprovalComplete((int)$roundId)) {
+                    throw new InvalidArgumentException(
+                        "Loan {$loan['loan_number']} approval is incomplete. " .
+                        "All required approval slots must be satisfied before disbursement."
+                    );
+                }
+            } catch (RuntimeException $e) {
+                throw new InvalidArgumentException($e->getMessage());
             }
 
             // Stage — Loan Schedule & Due-Date Integrity Remediation
@@ -389,42 +498,45 @@ class LoanModel extends Model
             $finalRate = (float)$loan['interest_rate'];
 
             if (($loan['repayment_method'] ?? '') === 'business_boost') {
-                $weeks = max(1, $months * 4);
-                $this->generateWeeklyInstallmentSchedule(
-                    $loanId, (float)$loan['loan_amount'], (float)$loan['interest_amount'],
-                    (float)$loan['total_payable'], $months, $disbursementDate, 0
-                );
-                $this->update($loanId, [
-                    'monthly_installment'      => round((float)$loan['total_payable'] / $weeks, 2),
-                    'interest_only_months'     => 0,
-                    'principal_recovery_weeks' => $weeks,
-                ]);
-            } else {
-                $interestOnlyMonths = max(1, $months - 2);
-                $recoveryWeeks = 8;
+                // Business Boost: Weekly principal + interest from Week 1
                 $productModel->generateBusinessBoostSchedule(
                     $loanId, (float)$loan['loan_amount'], $finalRate,
-                    $months, $interestOnlyMonths, $recoveryWeeks, $disbursementDate
+                    $months, $disbursementDate
                 );
-                // Recalculate totals with the correct rate/weekly rounding
-                // (identical recalculation LoanController::store() always
-                // performed at this point, just relocated).
+                
+                // Recalculate totals with correct formula (pass startDate for accurate week count)
                 $boostCalc = $productModel->calculateBusinessBoost(
-                    (float)$loan['loan_amount'], $finalRate, $months, $interestOnlyMonths, $recoveryWeeks
+                    (float)$loan['loan_amount'], $finalRate, $months, $disbursementDate
                 );
+                
                 $this->update($loanId, [
                     'total_payable'            => $boostCalc['total_payable'],
                     'outstanding'              => $boostCalc['total_payable'],
                     'interest_amount'          => $boostCalc['total_interest'],
-                    // generateBusinessBoostSchedule() itself unconditionally
-                    // writes repayment_method='business_boost' -- this
-                    // update, running after it, is what actually determines
-                    // the final, correctly-labeled stored value for the
-                    // "Interest Only (Standard)" variant (unchanged from
-                    // the original LoanController::store() behavior).
+                    'monthly_installment'      => $boostCalc['monthly_installment'],
+                    'repayment_method'         => 'business_boost',
+                    'interest_only_months'     => 0,
+                    'principal_recovery_weeks' => $boostCalc['total_weeks'],
+                ]);
+            } else {
+                // Interest Only (Standard): Interest-only phase + 8 week recovery
+                $productModel->generateInterestOnlySchedule(
+                    $loanId, (float)$loan['loan_amount'], $finalRate,
+                    $months, $disbursementDate
+                );
+                
+                // Recalculate totals with correct formula
+                $interestOnlyCalc = $productModel->calculateInterestOnly(
+                    (float)$loan['loan_amount'], $finalRate, $months
+                );
+                
+                $this->update($loanId, [
+                    'total_payable'            => $interestOnlyCalc['total_payable'],
+                    'outstanding'              => $interestOnlyCalc['total_payable'],
+                    'interest_amount'          => $interestOnlyCalc['total_interest'],
                     'repayment_method'         => 'interest_only',
-                    'interest_only_months'     => $interestOnlyMonths,
-                    'principal_recovery_weeks' => $recoveryWeeks,
+                    'interest_only_months'     => $interestOnlyCalc['interest_only_months'],
+                    'principal_recovery_weeks' => $interestOnlyCalc['recovery_weeks'],
                 ]);
             }
         } elseif ($repFreq === 'weekly' && $months > 0) {

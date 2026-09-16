@@ -502,43 +502,164 @@ class LoanProductModel extends Model
     }
 
     // ================================================================
-    // BUSINESS BOOST LOAN — HYBRID SCHEDULE GENERATION
+    // BUSINESS BOOST LOAN — WEEKLY PRINCIPAL + INTEREST FROM WEEK 1
     // ================================================================
 
     /**
      * Generate the Business Boost Loan repayment schedule.
-     *
-     * Interest-only for (totalMonths - 2) months, then weekly principal recovery for 8 weeks.
-     * No phase separators — one continuous schedule.
+     * 
+     * Business Boost: Weekly principal + interest payments from Week 1.
+     * NO interest-only phase. Borrower pays both principal and interest from the beginning.
+     * 
+     * Formula:
+     * - Monthly Installment = Total Payable ÷ Term Months
+     * - Weekly Installment = Monthly Installment ÷ 4
+     * - Weekly Principal = Principal ÷ Total Weeks
+     * - Weekly Interest = Total Interest ÷ Total Weeks
+     * 
+     * Final week absorbs rounding differences to ensure exact reconciliation.
      */
     public function generateBusinessBoostSchedule(
         int $loanId,
         float $principal,
         float $monthlyRate,
         int $totalMonths,
-        int $interestOnlyMonths,
-        int $recoveryWeeks,
         string $startDate
     ): void {
         try {
             // Clear existing installments
             $this->db->prepare("DELETE FROM `loan_installments` WHERE `loan_id`=?")->execute([$loanId]);
 
-            // Recalculate: interest-only = totalMonths - 2, recovery = 8 weeks (last 2 months)
+            // Calculate totals
+            $monthlyInterest = round($principal * ($monthlyRate / 100), 2);
+            $totalInterest   = round($monthlyInterest * $totalMonths, 2);
+            $totalPayable    = $principal + $totalInterest;
+            
+            // CORRECTION: Use actual calendar duration, not months × 4
+            // Calculate contractual end date (actual calendar months from start)
+            if (!class_exists('LoanModel')) {
+                require_once dirname(__DIR__) . '/models/LoanModel.php';
+            }
+            $contractualEndDate = LoanModel::addCalendarMonths($startDate, $totalMonths);
+            
+            // Generate weekly installment dates from start through contractual end
+            $installmentDates = [];
+            $currentDate = strtotime("+1 week", strtotime($startDate));
+            
+            while (date('Y-m-d', $currentDate) <= $contractualEndDate) {
+                $installmentDates[] = date('Y-m-d', $currentDate);
+                $currentDate = strtotime("+1 week", $currentDate);
+            }
+            
+            $actualWeeks = count($installmentDates);
+            
+            // Calculate standard weekly amounts based on ACTUAL weeks
+            $standardWeeklyPrincipal = round($principal / $actualWeeks, 2);
+            $standardWeeklyInterest  = round($totalInterest / $actualWeeks, 2);
+            $standardWeeklyPayment   = $standardWeeklyPrincipal + $standardWeeklyInterest;
+
+            $installmentNo = 0;
+            $scheduledPrincipal = 0;
+            $scheduledInterest = 0;
+            $balance = $principal;
+
+            // Generate weekly schedule using actual calendar dates
+            foreach ($installmentDates as $index => $dueDate) {
+                $installmentNo++;
+                $isLastWeek = ($index === count($installmentDates) - 1);
+                $monthCovered = date('M Y', strtotime($dueDate));
+
+                // Final week: absorb rounding differences to ensure exact reconciliation
+                if ($isLastWeek) {
+                    $actualPrincipal = $principal - $scheduledPrincipal;
+                    $actualInterest = $totalInterest - $scheduledInterest;
+                    $actualTotal = $actualPrincipal + $actualInterest;
+                    $balance = 0;
+                } else {
+                    $actualPrincipal = $standardWeeklyPrincipal;
+                    $actualInterest = $standardWeeklyInterest;
+                    $actualTotal = $standardWeeklyPayment;
+                    $balance = round($balance - $actualPrincipal, 2);
+                }
+
+                $scheduledPrincipal += $actualPrincipal;
+                $scheduledInterest += $actualInterest;
+
+                $this->db->prepare(
+                    "INSERT INTO `loan_installments`
+                     (`loan_id`,`installment_no`,`period_type`,`payment_type`,`due_date`,`month_covered`,
+                      `principal_due`,`interest_due`,`amount_due`,`amount_paid`,`remaining`,`balance_after`,`status`)
+                     VALUES (?,?,'weekly','principal_interest',?,?,?,?,?,0,?,?,'pending')"
+                )->execute([
+                    $loanId, $installmentNo, $dueDate, $monthCovered,
+                    $actualPrincipal, $actualInterest, $actualTotal, $balance, $balance
+                ]);
+            }
+
+            // Update loan metadata with ACTUAL weeks
+            $this->db->prepare(
+                "UPDATE `loans` SET `repayment_method`='business_boost',
+                 `interest_only_months`=0, `principal_recovery_weeks`=? WHERE `id`=?"
+            )->execute([$actualWeeks, $loanId]);
+
+        } catch (PDOException $e) {
+            error_log('generateBusinessBoostSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    // ================================================================
+    // INTEREST ONLY (STANDARD) — HYBRID SCHEDULE GENERATION
+    // ================================================================
+
+    /**
+     * Generate the Interest Only (Standard) Loan repayment schedule.
+     *
+     * Interest Only Standard: Interest-only for (totalMonths - 2) months, 
+     * then weekly principal + interest recovery for 8 weeks.
+     * 
+     * For a 6-month loan:
+     * - First 4 months: Interest only (principal due = 0)
+     * - Final 8 weeks: Principal + remaining interest
+     */
+    public function generateInterestOnlySchedule(
+        int $loanId,
+        float $principal,
+        float $monthlyRate,
+        int $totalMonths,
+        string $startDate
+    ): void {
+        try {
+            // Clear existing installments
+            $this->db->prepare("DELETE FROM `loan_installments` WHERE `loan_id`=?")->execute([$loanId]);
+
+            // Calculate phases
             $interestOnlyMonths = max(1, $totalMonths - 2);
             $recoveryWeeks      = 8;
 
             $monthlyInterest    = round($principal * ($monthlyRate / 100), 2);
+            $totalInterest      = round($monthlyInterest * $totalMonths, 2);
+            
+            // Phase 1 interest
+            $phase1Interest = $monthlyInterest * $interestOnlyMonths;
+            
+            // Phase 2 remaining interest
+            $remainingInterest = $totalInterest - $phase1Interest;
+            
             $weeklyPrincipal    = round($principal / $recoveryWeeks, 2);
-            $weeklyInterest     = round($monthlyInterest / 4, 2);
+            $weeklyInterest     = round($remainingInterest / $recoveryWeeks, 2);
             $installmentNo      = 0;
             $balance            = $principal;
+            $scheduledPrincipal = 0;
+            $scheduledInterest  = 0;
 
             // ── Interest Only Period (monthly) ────────────────────
             for ($m = 1; $m <= $interestOnlyMonths; $m++) {
                 $installmentNo++;
                 $dueDate = LoanModel::addCalendarMonths($startDate, $m);
                 $monthCovered = date('M Y', strtotime($dueDate));
+
+                $scheduledInterest += $monthlyInterest;
 
                 $this->db->prepare(
                     "INSERT INTO `loan_installments`
@@ -559,10 +680,21 @@ class LoanProductModel extends Model
                 $dueDate = date('Y-m-d', strtotime("+{$w} weeks", strtotime($weekStartDate)));
                 $monthCovered = date('M Y', strtotime($dueDate));
 
-                // Last week: clear exact remaining balance
-                $actualPrincipal = ($w === $recoveryWeeks) ? $balance : $weeklyPrincipal;
-                $actualTotal     = $actualPrincipal + $weeklyInterest;
-                $balance         = round(max(0, $balance - $actualPrincipal), 2);
+                // Last week: absorb rounding differences
+                if ($w === $recoveryWeeks) {
+                    $actualPrincipal = $principal - $scheduledPrincipal;
+                    $actualInterest = $totalInterest - $scheduledInterest;
+                    $actualTotal = $actualPrincipal + $actualInterest;
+                    $balance = 0;
+                } else {
+                    $actualPrincipal = $weeklyPrincipal;
+                    $actualInterest = $weeklyInterest;
+                    $actualTotal = $actualPrincipal + $actualInterest;
+                    $balance = round($balance - $actualPrincipal, 2);
+                }
+
+                $scheduledPrincipal += $actualPrincipal;
+                $scheduledInterest += $actualInterest;
 
                 $this->db->prepare(
                     "INSERT INTO `loan_installments`
@@ -571,55 +703,120 @@ class LoanProductModel extends Model
                      VALUES (?,?,'weekly','principal_interest',?,?,?,?,?,0,?,?,'pending')"
                 )->execute([
                     $loanId, $installmentNo, $dueDate, $monthCovered,
-                    $actualPrincipal, $weeklyInterest, $actualTotal, $balance, $balance
+                    $actualPrincipal, $actualInterest, $actualTotal, $balance, $balance
                 ]);
             }
 
             // Update loan metadata
             $this->db->prepare(
-                "UPDATE `loans` SET `repayment_method`='business_boost',
+                "UPDATE `loans` SET `repayment_method`='interest_only',
                  `interest_only_months`=?, `principal_recovery_weeks`=? WHERE `id`=?"
             )->execute([$interestOnlyMonths, $recoveryWeeks, $loanId]);
 
         } catch (PDOException $e) {
-            // Rethrown (Stage — Loan Schedule & Due-Date Integrity
-            // Remediation) so the caller's transaction (LoanModel::
-            // disburse(), which now generates the authoritative schedule
-            // inside its own transaction) rolls back completely rather
-            // than leaving a partial schedule.
-            error_log('generateBusinessBoostSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
+            error_log('generateInterestOnlySchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
             throw $e;
         }
     }
 
     /**
      * Calculate Business Boost Loan totals.
+     * 
+     * Business Boost: Weekly principal + interest from Week 1.
+     * Uses ACTUAL calendar duration, not months × 4.
+     * 
+     * @param float $principal Loan principal
+     * @param float $monthlyRate Monthly interest rate percentage
+     * @param int $totalMonths Loan term in calendar months
+     * @param string $startDate Start/disbursement date (YYYY-MM-DD)
+     * @return array Calculation results including actual week count
      */
-    public function calculateBusinessBoost(float $principal, float $monthlyRate, int $totalMonths, int $interestOnlyMonths, int $recoveryWeeks): array
+    public function calculateBusinessBoost(float $principal, float $monthlyRate, int $totalMonths, string $startDate = null): array
     {
         $monthlyInterest = round($principal * ($monthlyRate / 100), 2);
-        $weeklyInterest  = round($monthlyInterest / 4, 2);
-        $weeklyPrincipal = round($principal / $recoveryWeeks, 2);
-        $weeklyPayment   = $weeklyPrincipal + $weeklyInterest;
+        $totalInterest   = round($monthlyInterest * $totalMonths, 2);
+        $totalPayable    = $principal + $totalInterest;
+        
+        // CORRECTION: Calculate actual weeks based on calendar duration
+        if ($startDate) {
+            // Use LoanModel's static method for calendar-safe month addition
+            if (!class_exists('LoanModel')) {
+                require_once dirname(__DIR__) . '/models/LoanModel.php';
+            }
+            $contractualEndDate = LoanModel::addCalendarMonths($startDate, $totalMonths);
+            
+            // Count actual weekly intervals
+            $actualWeeks = 0;
+            $currentDate = strtotime("+1 week", strtotime($startDate));
+            while (date('Y-m-d', $currentDate) <= $contractualEndDate) {
+                $actualWeeks++;
+                $currentDate = strtotime("+1 week", $currentDate);
+            }
+            $totalWeeks = $actualWeeks;
+        } else {
+            // Fallback for preview/estimation when start date unknown
+            // Use approximate: months * 4.33 weeks per month
+            $totalWeeks = max(1, round($totalMonths * 4.33));
+        }
 
-        $totalInterestPhase1 = $monthlyInterest * $interestOnlyMonths;
-        $totalInterestPhase2 = $weeklyInterest * $recoveryWeeks;
-        $totalInterest       = $totalInterestPhase1 + $totalInterestPhase2;
-        $totalPayable        = $principal + $totalInterest;
+        $monthlyInstallment = round($totalPayable / $totalMonths, 2);
+        $weeklyInstallment  = round($totalPayable / $totalWeeks, 2);
+        
+        $weeklyPrincipal = round($principal / $totalWeeks, 2);
+        $weeklyInterest  = round($totalInterest / $totalWeeks, 2);
 
         return [
             'principal'            => $principal,
             'monthly_rate'         => $monthlyRate,
             'monthly_interest'     => $monthlyInterest,
+            'total_interest'       => $totalInterest,
+            'total_payable'        => $totalPayable,
+            'total_weeks'          => $totalWeeks,
+            'monthly_installment'  => $monthlyInstallment,
+            'weekly_installment'   => $weeklyInstallment,
+            'weekly_principal'     => $weeklyPrincipal,
+            'weekly_interest'      => $weeklyInterest,
+            'interest_only_months' => 0,
+            'recovery_weeks'       => $totalWeeks,
+            'contractual_end_date' => $startDate ? LoanModel::addCalendarMonths($startDate, $totalMonths) : null,
+        ];
+    }
+
+    /**
+     * Calculate Interest Only (Standard) Loan totals.
+     * 
+     * Interest Only: Interest-only for (totalMonths - 2) months, 
+     * then weekly principal + interest recovery for 8 weeks.
+     */
+    public function calculateInterestOnly(float $principal, float $monthlyRate, int $totalMonths): array
+    {
+        $interestOnlyMonths = max(1, $totalMonths - 2);
+        $recoveryWeeks = 8;
+
+        $monthlyInterest = round($principal * ($monthlyRate / 100), 2);
+        $totalInterest   = round($monthlyInterest * $totalMonths, 2);
+        $totalPayable    = $principal + $totalInterest;
+
+        $phase1Interest = $monthlyInterest * $interestOnlyMonths;
+        $remainingInterest = $totalInterest - $phase1Interest;
+
+        $weeklyPrincipal = round($principal / $recoveryWeeks, 2);
+        $weeklyInterest  = round($remainingInterest / $recoveryWeeks, 2);
+        $weeklyPayment   = $weeklyPrincipal + $weeklyInterest;
+
+        return [
+            'principal'            => $principal,
+            'monthly_rate'         => $monthlyRate,
+            'monthly_interest'     => $monthlyInterest,
+            'total_interest'       => $totalInterest,
+            'total_payable'        => $totalPayable,
             'interest_only_months' => $interestOnlyMonths,
             'recovery_weeks'       => $recoveryWeeks,
+            'phase1_interest'      => $phase1Interest,
+            'remaining_interest'   => $remainingInterest,
             'weekly_principal'     => $weeklyPrincipal,
             'weekly_interest'      => $weeklyInterest,
             'weekly_payment'       => $weeklyPayment,
-            'total_interest'       => round($totalInterest, 2),
-            'total_payable'        => round($totalPayable, 2),
-            'phase1_total'         => round($totalInterestPhase1, 2),
-            'phase2_total'         => round($weeklyPayment * $recoveryWeeks, 2),
         ];
     }
 
@@ -749,41 +946,20 @@ class LoanProductModel extends Model
             $text .= "Processing fee: " . number_format($loan['processing_fee'], 0) . "\n";
         }
 
-        $text .= "\n*Payment schedule*\n";
+        $text .= "\n*Payment schedule*\n\n";
 
-        // Check if this has principal/interest breakdown
-        $hasBreakdown = false;
+        // Show only total amount due per installment (no breakdown)
         foreach ($installments as $inst) {
-            if (isset($inst['principal_due'])) { $hasBreakdown = true; break; }
+            $dueDate = date('jS F Y', strtotime($inst['due_date']));
+            $total   = number_format((float)($inst['amount_due'] ?? 0), 0);
+            $text .= $dueDate . "  :" . $total . "\n\n";
         }
 
-        if ($hasBreakdown) {
-            foreach ($installments as $inst) {
-                $dueDate   = date('jS F Y', strtotime($inst['due_date']));
-                $principal = (float)($inst['principal_due'] ?? 0);
-                $interest  = (float)($inst['interest_due'] ?? 0);
-                $total     = (float)($inst['amount_due'] ?? 0);
-                $balance   = (float)($inst['balance_after'] ?? 0);
-
-                if ($principal == 0) {
-                    // Interest only row
-                    $text .= $dueDate . "  Interest: " . number_format($interest, 0) . "  Bal: " . number_format($balance, 0) . "\n";
-                } else {
-                    // Principal + Interest row
-                    $text .= $dueDate . "  " . number_format($principal, 0) . " + " . number_format($interest, 0) . " = " . number_format($total, 0) . "  Bal: " . number_format($balance, 0) . "\n";
-                }
-            }
-        } else {
-            foreach ($installments as $inst) {
-                $text .= date('jS F Y', strtotime($inst['due_date'])) . "     " . number_format($inst['amount_due'], 0) . "\n";
-            }
-        }
-
-        $text .= "\n*Please note*\n";
+        $text .= "*Please note*\n";
         $text .= "• Timely repayment strengthens relationship\n";
         $text .= "• Stay on weekly list to increase credit score\n";
         $text .= "• There is a penalty of 0.25% every 3 days from " . $lastDueDate . " for all existing balance due.\n\n";
-        $text .= "Wish you the best of luck 🙏";
+        $text .= "Wish you the best of luck";
 
         return $text;
     }

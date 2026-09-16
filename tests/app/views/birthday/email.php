@@ -45,7 +45,7 @@
 
     <!-- ── Thin gold top accent bar ───────────────────────────────── -->
     <tr>
-        <td style="background:#B8892B;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+        <td style="background:#FF7E06;height:4px;font-size:0;line-height:0;">&nbsp;</td>
     </tr>
 
     <!-- ── Minimal brand strip ────────────────────────────────────── -->
@@ -65,7 +65,7 @@
                                  text-transform:uppercase;">Empower</span>
                     <span style="font-family:Arial,Helvetica,sans-serif;
                                  font-size:13px;font-weight:400;
-                                 color:#B8892B;letter-spacing:.04em;
+                                 color:#FF7E06;letter-spacing:.04em;
                                  text-transform:uppercase;"> Investment Club</span>
                 </td>
             </tr>
@@ -81,10 +81,10 @@
             <table role="presentation" cellpadding="0" cellspacing="0"
                    style="margin:0 auto 20px;">
             <tr>
-                <td style="width:40px;border-top:2px solid #B8892B;vertical-align:middle;"></td>
-                <td style="padding:0 12px;font-size:16px;color:#B8892B;
+                <td style="width:40px;border-top:2px solid #FF7E06;vertical-align:middle;"></td>
+                <td style="padding:0 12px;font-size:16px;color:#FF7E06;
                            vertical-align:middle;line-height:1;">&#10022;</td>
-                <td style="width:40px;border-top:2px solid #B8892B;vertical-align:middle;"></td>
+                <td style="width:40px;border-top:2px solid #FF7E06;vertical-align:middle;"></td>
             </tr>
             </table>
 
@@ -101,7 +101,7 @@
             <p style="margin:0 0 24px;
                       font-family:Arial,Helvetica,sans-serif;
                       font-size:14px;font-weight:600;
-                      color:#B8892B;letter-spacing:.12em;
+                      color:#FF7E06;letter-spacing:.12em;
                       text-transform:uppercase;">
                 Happy Birthday
             </p>
@@ -164,7 +164,7 @@
             <!-- Sign-off -->
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
-                <td style="border-left:3px solid #B8892B;
+                <td style="border-left:3px solid #FF7E06;
                             padding:12px 16px;
                             background:#faf8f3;
                             border-radius:0 4px 4px 0;">
@@ -217,7 +217,7 @@
 
     <!-- ── Thin gold bottom accent bar ───────────────────────────── -->
     <tr>
-        <td style="background:#B8892B;height:3px;font-size:0;line-height:0;">&nbsp;</td>
+        <td style="background:#FF7E06;height:3px;font-size:0;line-height:0;">&nbsp;</td>
     </tr>
 
 </table>

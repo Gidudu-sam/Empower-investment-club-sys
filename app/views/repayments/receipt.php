@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#B8892B; }
+        :root { --navy:#1B2B6B; --navy-dark:#0B1229; --orange:#FF7E06; }
         * { box-sizing:border-box; margin:0; padding:0; }
         body { background:#eef0f5; font-family:'Inter',sans-serif; font-size:.85rem; color:#1f2937; }
         .receipt-wrap { max-width:520px; margin:1.5rem auto; padding:0 1rem; }
@@ -101,14 +101,17 @@
             <?php endif; ?>
             <div class="receipt-row"><span class="label">Payment Date</span><span class="value"><?= date('d F Y', strtotime($r['payment_date'])) ?></span></div>
             <?php if ((float)($r['penalty_paid'] ?? 0) > 0): ?>
-            <div class="receipt-row"><span class="label">Principal</span><span class="value">Shs <?= number_format((float)$r['principal_paid'], 2) ?></span></div>
-            <div class="receipt-row"><span class="label">Penalty</span><span class="value">Shs <?= number_format((float)$r['penalty_paid'], 2) ?></span></div>
+            <div class="receipt-row"><span class="label">Penalty Paid</span><span class="value">Shs <?= number_format((float)$r['penalty_paid'], 2) ?></span></div>
             <?php endif; ?>
+            <?php if ((float)($r['interest_paid'] ?? 0) > 0): ?>
+            <div class="receipt-row"><span class="label">Interest Paid</span><span class="value">Shs <?= number_format((float)$r['interest_paid'], 2) ?></span></div>
+            <?php endif; ?>
+            <div class="receipt-row"><span class="label">Principal Paid</span><span class="value">Shs <?= number_format((float)$r['principal_paid'], 2) ?></span></div>
             <div class="receipt-row"><span class="label">Outstanding Principal</span><span class="value" style="color:#9C4221;">Shs <?= number_format($r['loan_outstanding'] ?? $r['balance_after'], 2) ?></span></div>
             <div class="receipt-row">
                 <span class="label">Outstanding Balance</span>
                 <span class="value" style="color:<?= $r['balance_after'] <= 0 ? '#2F6B4F' : '#9C4221' ?>;">
-                    Shs <?= number_format($r['balance_after'], 2) ?><?= $r['balance_after'] <= 0 ? ' ✓ CLEARED' : '' ?>
+                    Shs <?= number_format($r['balance_after'], 2) ?><?= $r['balance_after'] <= 0 ? ' - CLEARED' : '' ?>
                 </span>
             </div>
             <div class="receipt-row"><span class="label">Received By</span><span class="value"><?= htmlspecialchars($r['cashier_name'] ?? 'System') ?></span></div>

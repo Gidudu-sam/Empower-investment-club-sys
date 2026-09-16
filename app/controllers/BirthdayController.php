@@ -123,7 +123,7 @@ class BirthdayController extends Controller
             // Per-member try/catch — one failure must not abort the entire batch
             try {
                 $html    = $this->buildEmailHtml($member);
-                $subject = 'Happy Birthday, ' . $member['first_name'] . '! 🎉';
+                $subject = 'Happy Birthday, ' . $member['first_name'] . '!';
 
                 $result  = $this->mailer->send($email, $fullName, $subject, $html, $logo);
 
