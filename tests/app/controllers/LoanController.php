@@ -1361,7 +1361,51 @@ class LoanController extends Controller
 
     public function approve(): void
     {
-        $this->requireApproverAccess();
+        Session::requireAuth();
+        
+        // Multi-approval support: Check if user has approval authority
+        // 1. Traditional approvers: admin, chairman, vice_chairman (general authority)
+        // 2. Multi-approval participants: secretary, treasurer (specific loan authority via slots)
+        // 3. Explicitly blocked: office_admin, system_admin (no approval authority)
+        
+        $userId = (int)Session::get('user_id');
+        $userRole = Session::get('user_role');
+        $loanId = (int)($_POST['loan_id'] ?? 0);
+        
+        // Block office_admin and system_admin completely
+        if (Session::hasRole(['office_admin', 'system_admin'])) {
+            Session::flash('error', 'Access denied. Office admin and system admin cannot approve loans.');
+            $this->redirect(APP_URL . '/index.php?page=loans');
+            return;
+        }
+        
+        // Check if user has traditional approval authority OR multi-approval slot
+        $hasTraditionalAuthority = Session::hasRole(['admin', 'chairman', 'vice_chairman']);
+        $hasMultiApprovalSlot = false;
+        
+        if (!$hasTraditionalAuthority && in_array($userRole, ['secretary', 'treasurer'])) {
+            // Check if user has a pending approval slot for this specific loan
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare("
+                SELECT si.id
+                FROM transaction_approval_rounds ar
+                JOIN transaction_approval_slot_instances si ON si.approval_round_id = ar.id
+                WHERE ar.transaction_type = 'loan'
+                  AND ar.transaction_id = ?
+                  AND ar.approval_status = 'pending'
+                  AND si.slot_status = 'pending'
+                  AND si.required_role = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$loanId, $userRole]);
+            $hasMultiApprovalSlot = (bool)$stmt->fetch();
+        }
+        
+        if (!$hasTraditionalAuthority && !$hasMultiApprovalSlot) {
+            Session::flash('error', 'Access denied. You do not have approval authority for this loan.');
+            $this->redirect(APP_URL . '/index.php?page=loan-view&id=' . $loanId);
+            return;
+        }
 
         if (!$this->verifyCsrf($_POST['csrf_token'] ?? '')) {
             Session::flash('error', 'Security token mismatch. Please try again.');
@@ -1369,11 +1413,10 @@ class LoanController extends Controller
             return;
         }
 
-        $id = (int)($_POST['loan_id'] ?? 0);
         try {
-            $loan = $this->model->find($id);
-            $this->model->approve($id, (int)Session::get('user_id'));
-            $this->model->log((int)Session::get('user_id'), 'loan_approved',
+            $loan = $this->model->find($loanId);
+            $this->model->approve($loanId, $userId);
+            $this->model->log($userId, 'loan_approved',
                 "Approved loan {$loan['loan_number']} — Shs " . number_format((float)$loan['loan_amount'], 2));
             // Stage 12-E: notify the operational team who acts next
             // (disburse) -- the same audience Stage 12-B's loan reminders
@@ -1382,15 +1425,15 @@ class LoanController extends Controller
                 ['admin', 'treasurer', 'loans_officer'],
                 "Loan {$loan['loan_number']} approved",
                 "Loan {$loan['loan_number']} (Shs " . number_format((float)$loan['loan_amount'], 2) . ") has been approved and can now be disbursed.",
-                'success', 'loan', $id,
-                ['loan_id' => $id, 'member_id' => $loan['member_id'] ?? null, 'action_url' => APP_URL . '/index.php?page=loan-view&id=' . $id],
-                "loan_approved:{$id}"
+                'success', 'loan', $loanId,
+                ['loan_id' => $loanId, 'member_id' => $loan['member_id'] ?? null, 'action_url' => APP_URL . '/index.php?page=loan-view&id=' . $loanId],
+                "loan_approved:{$loanId}"
             );
             Session::flash('success', "Loan {$loan['loan_number']} approved. It can now be disbursed.");
         } catch (Exception $e) {
             Session::flash('error', $e->getMessage());
         }
-        $this->redirect(APP_URL . '/index.php?page=loan-view&id=' . $id);
+        $this->redirect(APP_URL . '/index.php?page=loan-view&id=' . $loanId);
     }
 
     public function reject(): void

@@ -37,16 +37,21 @@ $canSubmitLoan   = Session::hasRole(['admin', 'treasurer', 'loans_officer'])
 
 // Multi-Approval Support (2026-09-16): Check if current user has a pending approval slot
 // for this specific loan (Secretary/Treasurer for Tier 4, Chairman/Vice Chairman for all)
+// Office Admin is EXPLICITLY EXCLUDED from any loan approval
 $isApproverRole  = Session::hasRole(['admin', 'chairman', 'vice_chairman']);
 $isOwnLoan       = (int)($loan['recorded_by'] ?? 0) === $currentUserId;
+$isOfficeAdmin   = Session::hasRole(['office_admin']);
 
 // Can approve if:
 // 1. Traditional approver role (admin/chairman/vice_chairman) AND not own loan, OR
-// 2. User has a pending approval slot for this specific loan (multi-approval)
-$canApproveLoan  = ($isApproverRole && $loan['status'] === 'pending_approval' && !$isOwnLoan)
-    || ($userCanApproveThisLoan ?? false);
+// 2. User has a pending approval slot for this specific loan (multi-approval: secretary/treasurer)
+// 3. NEVER if office_admin (explicitly blocked)
+$canApproveLoan  = !$isOfficeAdmin && (
+    ($isApproverRole && $loan['status'] === 'pending_approval' && !$isOwnLoan)
+    || ($userCanApproveThisLoan ?? false)
+);
 
-$canRejectLoan   = $isApproverRole && $loan['status'] === 'pending_approval';
+$canRejectLoan   = !$isOfficeAdmin && $isApproverRole && $loan['status'] === 'pending_approval';
 $canDisburseLoan = Session::hasRole(['admin', 'chairman', 'vice_chairman', 'loans_officer']) && $loan['status'] === 'approved';
 // Legacy accounting-retry button: only for loans that predate/sit outside
 // the Stage 8 workflow (never 'approved' -- that must use Disburse instead;
