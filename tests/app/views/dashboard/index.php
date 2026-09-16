@@ -53,30 +53,30 @@ if (!function_exists('waNumber')) {
      layouts/page-title.php's shared header, this one is hand-rolled and
      was missing flex-wrap entirely), sits side by side again from the
      sm breakpoint up, matching the original desktop appearance exactly. -->
-<div class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-sm-between gap-2 mt-4 mb-4">
+<div class="d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-sm-between gap-2 mb-3">
     <div>
         <?php if ($isChairman): ?>
-        <h1 class="h3 mb-1 fw-bold text-gray-800" style="font-family:'Space Grotesk',sans-serif;">
+        <h1 class="h4 mb-1 fw-bold text-gray-800" style="font-family:'Space Grotesk',sans-serif;">
             <?= Session::hasRole(['vice_chairman']) ? "Vice Chairman's Overview" : "Chairman's Overview" ?>
         </h1>
-        <p class="text-muted mb-0" style="font-size:.82rem;">Governance, approvals and club performance at a glance.</p>
+        <p class="text-muted mb-0" style="font-size:.78rem;">Governance, approvals and club performance at a glance.</p>
         <?php else: ?>
-        <h1 class="h3 mb-1 fw-bold text-gray-800" style="font-family:'Space Grotesk',sans-serif;">
+        <h1 class="h4 mb-1 fw-bold text-gray-800" style="font-family:'Space Grotesk',sans-serif;">
             Dashboard
         </h1>
-        <p class="text-muted mb-0" style="font-size:.82rem;">Welcome back, <strong><?= $userName ?></strong></p>
+        <p class="text-muted mb-0" style="font-size:.78rem;">Welcome back, <strong><?= $userName ?></strong></p>
         <?php endif; ?>
     </div>
-    <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-2" style="font-size:.72rem;">
+    <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-2" style="font-size:.7rem;">
         <i class="bi bi-calendar3 me-1"></i><?= date('l, d F Y') ?>
     </span>
 </div>
 
 <?php if ($isChairman && $chairmanOverview !== null): ?>
 <!-- ── ACTION REQUIRED (Chairman only) ─────────────────────────── -->
-<div id="pending-approvals" class="card mb-4" style="border-left:4px solid <?= $chairmanOverview['totalPending'] > 0 ? 'var(--gold-deep, #c99a2e)' : 'var(--brand-navy, #0d3b66)' ?>;">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <h6 class="mb-0 fw-semibold">
+<div id="pending-approvals" class="card mb-3" style="border-left:4px solid <?= $chairmanOverview['totalPending'] > 0 ? 'var(--gold-deep, #c99a2e)' : 'var(--brand-navy, #0d3b66)' ?>;">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <h6 class="mb-0 fw-semibold small">
             <?php if ($chairmanOverview['totalPending'] > 0): ?>
             <i class="bi bi-bell-fill me-2 text-warning"></i>Action Required
             <span class="badge bg-warning text-dark rounded-pill ms-1"><?= $chairmanOverview['totalPending'] ?></span>
@@ -150,7 +150,7 @@ if (!function_exists('waNumber')) {
 
 <!-- ── Pending Approvals (admin only — Chairman gets the redesigned Action Required panel above) ── -->
 <?php if ($pendingApprovals !== null && !$isChairman): $pendingCount = count($pendingApprovalItems); ?>
-<div class="card mb-4" style="border-left:4px solid var(--brand-navy, #0d3b66);">
+<div class="card mb-3" style="border-left:4px solid var(--brand-navy, #0d3b66);">
     <div class="card-header d-flex align-items-center justify-content-between">
         <h6 class="mb-0 fw-semibold">
             <i class="bi bi-check2-square me-2"></i>Pending Approvals
@@ -1240,7 +1240,7 @@ if (!function_exists('waNumber')) {
 <?php endif; ?>
 
 <!-- ── ROW 5: Quick Actions + Recent Members ─────────────────── -->
-<div class="row g-4">
+<div class="row g-3">
 
     <!-- Quick Actions -->
     <div class="col-xl-3 col-lg-4">

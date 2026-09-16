@@ -337,6 +337,8 @@ class LoanController extends Controller
         // Multi-approval: Check if current user has a pending approval slot for this loan
         $userCanApproveThisLoan = false;
         $userApprovalSlot = null;
+        $approvalProgress = null;
+        
         if ($loan['status'] === 'pending_approval') {
             $currentUserId = (int)Session::get('user_id');
             $currentUserRole = Session::get('user_role');
@@ -344,7 +346,19 @@ class LoanController extends Controller
             // Check if there's an approval round for this loan
             $db = Database::getInstance()->getConnection();
             $stmt = $db->prepare("
-                SELECT ar.id as round_id
+                SELECT 
+                    ar.id as round_id, 
+                    ar.tier_number,
+                    ar.approval_status, 
+                    ar.created_at, 
+                    ar.completed_at,
+                    CASE ar.tier_number
+                        WHEN 1 THEN 'Tier 1 - Small Loan'
+                        WHEN 2 THEN 'Tier 2 - Medium Loan'
+                        WHEN 3 THEN 'Tier 3 - Large Loan'
+                        WHEN 4 THEN 'Tier 4 - Very Large Loan'
+                        ELSE CONCAT('Tier ', ar.tier_number)
+                    END as tier_name
                 FROM transaction_approval_rounds ar
                 WHERE ar.transaction_type = 'loan'
                   AND ar.transaction_id = ?
@@ -355,21 +369,41 @@ class LoanController extends Controller
             $round = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($round) {
-                // Check if current user has a pending slot in this round
+                // Fetch all approval slots for this round (for administrative visibility)
                 $stmt = $db->prepare("
-                    SELECT id, slot_number, required_role, display_label
-                    FROM transaction_approval_slot_instances
-                    WHERE approval_round_id = ?
-                      AND slot_status = 'pending'
-                      AND required_role = ?
-                    LIMIT 1
+                    SELECT 
+                        asi.id,
+                        asi.slot_number,
+                        asi.required_role,
+                        asi.display_label,
+                        asi.slot_status,
+                        asi.satisfied_by_user_id,
+                        asi.satisfied_at,
+                        u.full_name,
+                        u.email
+                    FROM transaction_approval_slot_instances asi
+                    LEFT JOIN users u ON asi.satisfied_by_user_id = u.id
+                    WHERE asi.approval_round_id = ?
+                    ORDER BY asi.slot_number ASC
                 ");
-                $stmt->execute([$round['round_id'], $currentUserRole]);
-                $slot = $stmt->fetch(PDO::FETCH_ASSOC);
+                $stmt->execute([$round['round_id']]);
+                $slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
-                if ($slot) {
-                    $userCanApproveThisLoan = true;
-                    $userApprovalSlot = $slot;
+                $approvalProgress = [
+                    'round' => $round,
+                    'slots' => $slots,
+                    'total' => count($slots),
+                    'satisfied' => count(array_filter($slots, fn($s) => $s['slot_status'] === 'satisfied')),
+                    'pending' => count(array_filter($slots, fn($s) => $s['slot_status'] === 'pending'))
+                ];
+                
+                // Check if current user has a pending slot in this round
+                foreach ($slots as $slot) {
+                    if ($slot['slot_status'] === 'pending' && $slot['required_role'] === $currentUserRole) {
+                        $userCanApproveThisLoan = true;
+                        $userApprovalSlot = $slot;
+                        break;
+                    }
                 }
             }
         }
@@ -386,6 +420,7 @@ class LoanController extends Controller
             'installments' => $installments,
             'userCanApproveThisLoan' => $userCanApproveThisLoan,
             'userApprovalSlot' => $userApprovalSlot,
+            'approvalProgress' => $approvalProgress,
             'success'      => Session::flash('success'),
             'error'        => Session::flash('error'),
             'csrfToken'    => $this->getCsrf(),

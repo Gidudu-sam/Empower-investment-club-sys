@@ -318,6 +318,70 @@ $subtitle = '<a href="' . $base . '?page=member-view&id=' . $loan['member_id'] .
                 This is a multi-approval loan requiring <?= htmlspecialchars($userApprovalSlot['display_label']) ?> approval.
             </div>
             <?php endif; ?>
+            
+            <?php if (!empty($approvalProgress)): ?>
+            <!-- Multi-Approval Progress Display -->
+            <div class="border rounded p-3 mb-3" style="background-color: #f8f9fa;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0 fw-semibold" style="font-size: .85rem;">
+                        <i class="bi bi-list-check me-1"></i>
+                        Approval Progress: <?= htmlspecialchars($approvalProgress['round']['tier_name']) ?>
+                    </h6>
+                    <span class="badge bg-secondary">
+                        <?= $approvalProgress['satisfied'] ?> / <?= $approvalProgress['total'] ?> Approved
+                    </span>
+                </div>
+                
+                <div class="approval-slots">
+                    <?php foreach ($approvalProgress['slots'] as $slot): ?>
+                    <div class="d-flex align-items-start mb-2 pb-2 border-bottom">
+                        <div class="me-3" style="min-width: 30px;">
+                            <?php if ($slot['slot_status'] === 'satisfied'): ?>
+                                <i class="bi bi-check-circle-fill text-success" style="font-size: 1.2rem;"></i>
+                            <?php else: ?>
+                                <i class="bi bi-clock text-warning" style="font-size: 1.2rem;"></i>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold" style="font-size: .8rem;">
+                                <?= htmlspecialchars($slot['display_label']) ?>
+                                <span class="badge <?= $slot['slot_status'] === 'satisfied' ? 'bg-success' : 'bg-warning text-dark' ?> ms-2" style="font-size: .7rem;">
+                                    <?= $slot['slot_status'] === 'satisfied' ? 'Approved' : 'Pending' ?>
+                                </span>
+                            </div>
+                            <?php if ($slot['slot_status'] === 'satisfied'): ?>
+                                <div class="text-muted small">
+                                    <i class="bi bi-person-fill me-1"></i>
+                                    <?= htmlspecialchars($slot['full_name']) ?>
+                                    <span class="ms-2">
+                                        <i class="bi bi-calendar-check me-1"></i>
+                                        <?= date('d M Y, H:i', strtotime($slot['satisfied_at'])) ?>
+                                    </span>
+                                </div>
+                            <?php else: ?>
+                                <div class="text-muted small">
+                                    <i class="bi bi-hourglass-split me-1"></i>
+                                    Awaiting approval from <?= htmlspecialchars($slot['display_label']) ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                
+                <?php if ($approvalProgress['pending'] > 0): ?>
+                <div class="alert alert-warning py-2 px-2 mt-2 mb-0 small">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <strong><?= $approvalProgress['pending'] ?> approval(s) still needed</strong> before this loan can be disbursed.
+                </div>
+                <?php else: ?>
+                <div class="alert alert-success py-2 px-2 mt-2 mb-0 small">
+                    <i class="bi bi-check-circle me-1"></i>
+                    All approvals completed! This loan is ready for disbursement.
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
         <?php elseif ($loan['status'] === 'rejected'): ?>
             <div class="text-danger mb-2">Rejected <?= $loan['rejected_at'] ? date('d M Y', strtotime($loan['rejected_at'])) : '' ?></div>
             <?php if (!empty($loan['rejection_reason'])): ?>

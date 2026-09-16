@@ -253,7 +253,7 @@ nav.sb-topnav {
     min-height: calc(100vh - var(--nav-height));
     transition: margin .2s ease;
 }
-#layoutSidenav_content main { flex: 1; padding-bottom: 2rem; padding-top: 0.5rem; }
+#layoutSidenav_content main { flex: 1; padding-bottom: 1rem; padding-top: 0.25rem; }
 
 body.sb-sidenav-toggled #layoutSidenav_nav { transform: translateX(calc(var(--sidebar-width) * -1)); }
 body.sb-sidenav-toggled #layoutSidenav_content { margin-left: 0; }

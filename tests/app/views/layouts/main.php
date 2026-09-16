@@ -29,7 +29,7 @@
 
         <div id="layoutSidenav_content">
             <main>
-                <div class="container-fluid px-4">
+                <div class="container-fluid px-3 py-2">
                     <?php include VIEW_PATH . '/layouts/page-header.php'; ?>
                     <?= $content ?>
                 </div>
