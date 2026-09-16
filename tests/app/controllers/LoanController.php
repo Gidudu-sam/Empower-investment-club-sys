@@ -334,6 +334,46 @@ class LoanController extends Controller
         $totalPaid   = $repaymentModel->totalPaidForLoan($id);
         $installments = $this->model->getInstallments($id);
 
+        // Multi-approval: Check if current user has a pending approval slot for this loan
+        $userCanApproveThisLoan = false;
+        $userApprovalSlot = null;
+        if ($loan['status'] === 'pending_approval') {
+            $currentUserId = (int)Session::get('user_id');
+            $currentUserRole = Session::get('user_role');
+            
+            // Check if there's an approval round for this loan
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare("
+                SELECT ar.id as round_id
+                FROM transaction_approval_rounds ar
+                WHERE ar.transaction_type = 'loan'
+                  AND ar.transaction_id = ?
+                  AND ar.approval_status = 'pending'
+                LIMIT 1
+            ");
+            $stmt->execute([$id]);
+            $round = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($round) {
+                // Check if current user has a pending slot in this round
+                $stmt = $db->prepare("
+                    SELECT id, slot_number, required_role, display_label
+                    FROM transaction_approval_slot_instances
+                    WHERE approval_round_id = ?
+                      AND slot_status = 'pending'
+                      AND required_role = ?
+                    LIMIT 1
+                ");
+                $stmt->execute([$round['round_id'], $currentUserRole]);
+                $slot = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($slot) {
+                    $userCanApproveThisLoan = true;
+                    $userApprovalSlot = $slot;
+                }
+            }
+        }
+
         $this->render('loans/view', [
             'pageTitle'   => $loan['loan_number'] . ' — ' . APP_NAME,
             'breadcrumbs' => [
@@ -344,6 +384,8 @@ class LoanController extends Controller
             'repayments'   => $repayments,
             'totalPaid'    => $totalPaid,
             'installments' => $installments,
+            'userCanApproveThisLoan' => $userCanApproveThisLoan,
+            'userApprovalSlot' => $userApprovalSlot,
             'success'      => Session::flash('success'),
             'error'        => Session::flash('error'),
             'csrfToken'    => $this->getCsrf(),

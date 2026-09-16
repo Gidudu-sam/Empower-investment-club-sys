@@ -34,14 +34,18 @@ $canDeleteLoan = Session::hasRole(['admin']) && !$isPostedLoan;
 // Stage 8 workflow flags -- match LoanModel::submit()/approve()/reject()/disburse()'s own status checks exactly.
 $canSubmitLoan   = Session::hasRole(['admin', 'treasurer', 'loans_officer'])
     && in_array($loan['status'], ['draft', 'rejected'], true);
-// Stage 23: Vice Chairman added as deputy/alternate approver, matching
-// LoanRoleAccessTrait::requireApproverAccess() exactly. Secretary is NOT
-// included here -- Secretary's Stage 23 authority covers loan APPLICATION
-// approval only (see loan-applications/view.php's own $canApprove), never
-// loan approval/disbursement, which is what this flag gates.
+
+// Multi-Approval Support (2026-09-16): Check if current user has a pending approval slot
+// for this specific loan (Secretary/Treasurer for Tier 4, Chairman/Vice Chairman for all)
 $isApproverRole  = Session::hasRole(['admin', 'chairman', 'vice_chairman']);
 $isOwnLoan       = (int)($loan['recorded_by'] ?? 0) === $currentUserId;
-$canApproveLoan  = $isApproverRole && $loan['status'] === 'pending_approval' && !$isOwnLoan;
+
+// Can approve if:
+// 1. Traditional approver role (admin/chairman/vice_chairman) AND not own loan, OR
+// 2. User has a pending approval slot for this specific loan (multi-approval)
+$canApproveLoan  = ($isApproverRole && $loan['status'] === 'pending_approval' && !$isOwnLoan)
+    || ($userCanApproveThisLoan ?? false);
+
 $canRejectLoan   = $isApproverRole && $loan['status'] === 'pending_approval';
 $canDisburseLoan = Session::hasRole(['admin', 'chairman', 'vice_chairman', 'loans_officer']) && $loan['status'] === 'approved';
 // Legacy accounting-retry button: only for loans that predate/sit outside
@@ -301,6 +305,13 @@ $subtitle = '<a href="' . $base . '?page=member-view&id=' . $loan['member_id'] .
             <div class="text-muted mb-2">Submitted <?= $loan['submitted_at'] ? date('d M Y', strtotime($loan['submitted_at'])) : '' ?></div>
             <?php if ($isOwnLoan && $isApproverRole): ?>
             <div class="alert alert-warning py-2 px-2 mb-2 small">You prepared this loan and cannot approve it yourself. Ask another approver to review it.</div>
+            <?php endif; ?>
+            <?php if (($userApprovalSlot ?? null) && ($userCanApproveThisLoan ?? false)): ?>
+            <div class="alert alert-info py-2 px-2 mb-2 small">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Your approval is required</strong> as <?= htmlspecialchars($userApprovalSlot['display_label']) ?>. 
+                This is a multi-approval loan requiring <?= htmlspecialchars($userApprovalSlot['display_label']) ?> approval.
+            </div>
             <?php endif; ?>
         <?php elseif ($loan['status'] === 'rejected'): ?>
             <div class="text-danger mb-2">Rejected <?= $loan['rejected_at'] ? date('d M Y', strtotime($loan['rejected_at'])) : '' ?></div>
