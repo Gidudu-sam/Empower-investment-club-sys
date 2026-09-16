@@ -48,17 +48,25 @@ trait LoanRoleAccessTrait
         }
     }
 
-    /** Disbursement authority — wider than approve/reject because the loans
-     *  officer is the operational role that physically releases funds to
-     *  members after the chairman has given approval. Admin, chairman, and
-     *  vice chairman retain the right to disburse directly (they already
-     *  approved the loan). Loans officer is added here only, never to
-     *  approve/reject (requireApproverAccess above). */
+    /** Disbursement authority — Treasurer and Cashier are the primary fund
+     *  custodians who physically release funds to members after approval.
+     *  Loans Officer coordinates the operational logistics. Chairman retains
+     *  disbursement rights for operational flexibility and emergencies.
+     *  
+     *  Key roles:
+     *  - Chairman: Full loan authority including disbursement
+     *  - Treasurer: Financial custodian, authorizes fund release
+     *  - Cashier: Day-to-day cash handler, processes disbursements
+     *  - Loans Officer: Operational coordinator (prepares, schedules, tracks)
+     *  
+     *  Note: Admin is explicitly excluded (no financial operations override).
+     *  Note: Vice Chairman can approve but NOT disburse (separation of duties).
+     *  Note: Office Admin is explicitly excluded from disbursement authority. */
     protected function requireDisburseAccess(): void
     {
         Session::requireAuth();
-        if (!Session::hasRole(['admin', 'chairman', 'vice_chairman', 'loans_officer'])) {
-            Session::flash('error', 'Access denied. Only admin, chairman, vice chairman, or loans officer can disburse a loan.');
+        if (!Session::hasRole(['chairman', 'treasurer', 'cashier', 'loans_officer'])) {
+            Session::flash('error', 'Access denied. Only chairman, treasurer, cashier, or loans officer can disburse a loan.');
             $this->redirect(APP_URL . '/index.php?page=' . $this->roleDeniedRedirectPage());
             exit;
         }
