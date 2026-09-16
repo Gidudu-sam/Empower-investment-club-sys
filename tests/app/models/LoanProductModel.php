@@ -511,9 +511,12 @@ class LoanProductModel extends Model
      * Business Boost: Weekly principal + interest payments from Week 1.
      * NO interest-only phase. Borrower pays both principal and interest from the beginning.
      * 
+     * Contractual Rule: 1 month = 30 days = 4 weeks for installment calculation.
+     * This is a financial convention, not a calendar calculation.
+     * 
      * Formula:
-     * - Monthly Installment = Total Payable ÷ Term Months
-     * - Weekly Installment = Monthly Installment ÷ 4
+     * - Total Weeks = Term Months × 4 (contractual)
+     * - Weekly Installment = Total Payable ÷ Total Weeks
      * - Weekly Principal = Principal ÷ Total Weeks
      * - Weekly Interest = Total Interest ÷ Total Weeks
      * 
@@ -535,27 +538,12 @@ class LoanProductModel extends Model
             $totalInterest   = round($monthlyInterest * $totalMonths, 2);
             $totalPayable    = $principal + $totalInterest;
             
-            // CORRECTION: Use actual calendar duration, not months × 4
-            // Calculate contractual end date (actual calendar months from start)
-            if (!class_exists('LoanModel')) {
-                require_once dirname(__DIR__) . '/models/LoanModel.php';
-            }
-            $contractualEndDate = LoanModel::addCalendarMonths($startDate, $totalMonths);
+            // Business Boost contractual rule: 1 month = 4 weeks for installment calculation
+            $totalWeeks = $totalMonths * 4;
             
-            // Generate weekly installment dates from start through contractual end
-            $installmentDates = [];
-            $currentDate = strtotime("+1 week", strtotime($startDate));
-            
-            while (date('Y-m-d', $currentDate) <= $contractualEndDate) {
-                $installmentDates[] = date('Y-m-d', $currentDate);
-                $currentDate = strtotime("+1 week", $currentDate);
-            }
-            
-            $actualWeeks = count($installmentDates);
-            
-            // Calculate standard weekly amounts based on ACTUAL weeks
-            $standardWeeklyPrincipal = round($principal / $actualWeeks, 2);
-            $standardWeeklyInterest  = round($totalInterest / $actualWeeks, 2);
+            // Calculate standard weekly amounts based on CONTRACTUAL weeks
+            $standardWeeklyPrincipal = round($principal / $totalWeeks, 2);
+            $standardWeeklyInterest  = round($totalInterest / $totalWeeks, 2);
             $standardWeeklyPayment   = $standardWeeklyPrincipal + $standardWeeklyInterest;
 
             $installmentNo = 0;
@@ -563,10 +551,11 @@ class LoanProductModel extends Model
             $scheduledInterest = 0;
             $balance = $principal;
 
-            // Generate weekly schedule using actual calendar dates
-            foreach ($installmentDates as $index => $dueDate) {
-                $installmentNo++;
-                $isLastWeek = ($index === count($installmentDates) - 1);
+            // Generate weekly schedule using contractual week count
+            for ($week = 1; $week <= $totalWeeks; $week++) {
+                $installmentNo = $week;
+                $isLastWeek = ($week === $totalWeeks);
+                $dueDate = date('Y-m-d', strtotime("+{$week} week", strtotime($startDate)));
                 $monthCovered = date('M Y', strtotime($dueDate));
 
                 // Final week: absorb rounding differences to ensure exact reconciliation
@@ -596,11 +585,11 @@ class LoanProductModel extends Model
                 ]);
             }
 
-            // Update loan metadata with ACTUAL weeks
+            // Update loan metadata with CONTRACTUAL weeks
             $this->db->prepare(
                 "UPDATE `loans` SET `repayment_method`='business_boost',
                  `interest_only_months`=0, `principal_recovery_weeks`=? WHERE `id`=?"
-            )->execute([$actualWeeks, $loanId]);
+            )->execute([$totalWeeks, $loanId]);
 
         } catch (PDOException $e) {
             error_log('generateBusinessBoostSchedule() failed for loan ' . $loanId . ': ' . $e->getMessage());
@@ -723,13 +712,14 @@ class LoanProductModel extends Model
      * Calculate Business Boost Loan totals.
      * 
      * Business Boost: Weekly principal + interest from Week 1.
-     * Uses ACTUAL calendar duration, not months × 4.
+     * Contractual Rule: 1 month = 4 weeks for installment calculation.
+     * This is a financial convention, not a calendar calculation.
      * 
      * @param float $principal Loan principal
      * @param float $monthlyRate Monthly interest rate percentage
-     * @param int $totalMonths Loan term in calendar months
-     * @param string $startDate Start/disbursement date (YYYY-MM-DD)
-     * @return array Calculation results including actual week count
+     * @param int $totalMonths Loan term in months
+     * @param string $startDate Start/disbursement date (YYYY-MM-DD) - optional
+     * @return array Calculation results including contractual week count
      */
     public function calculateBusinessBoost(float $principal, float $monthlyRate, int $totalMonths, string $startDate = null): array
     {
@@ -737,26 +727,18 @@ class LoanProductModel extends Model
         $totalInterest   = round($monthlyInterest * $totalMonths, 2);
         $totalPayable    = $principal + $totalInterest;
         
-        // CORRECTION: Calculate actual weeks based on calendar duration
+        // Business Boost contractual rule: 1 month = 4 weeks for installment calculation
+        // This is a financial convention, not a calendar calculation
+        $totalWeeks = $totalMonths * 4;
+
+        // Calculate contractual end date for tracking purposes
+        // (does not affect installment count or amount)
+        $contractualEndDate = null;
         if ($startDate) {
-            // Use LoanModel's static method for calendar-safe month addition
             if (!class_exists('LoanModel')) {
                 require_once dirname(__DIR__) . '/models/LoanModel.php';
             }
             $contractualEndDate = LoanModel::addCalendarMonths($startDate, $totalMonths);
-            
-            // Count actual weekly intervals
-            $actualWeeks = 0;
-            $currentDate = strtotime("+1 week", strtotime($startDate));
-            while (date('Y-m-d', $currentDate) <= $contractualEndDate) {
-                $actualWeeks++;
-                $currentDate = strtotime("+1 week", $currentDate);
-            }
-            $totalWeeks = $actualWeeks;
-        } else {
-            // Fallback for preview/estimation when start date unknown
-            // Use approximate: months * 4.33 weeks per month
-            $totalWeeks = max(1, round($totalMonths * 4.33));
         }
 
         $monthlyInstallment = round($totalPayable / $totalMonths, 2);
@@ -778,7 +760,7 @@ class LoanProductModel extends Model
             'weekly_interest'      => $weeklyInterest,
             'interest_only_months' => 0,
             'recovery_weeks'       => $totalWeeks,
-            'contractual_end_date' => $startDate ? LoanModel::addCalendarMonths($startDate, $totalMonths) : null,
+            'contractual_end_date' => $contractualEndDate,
         ];
     }
 
