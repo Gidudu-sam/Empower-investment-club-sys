@@ -261,15 +261,88 @@
         /* Responsive */
         @media (max-width: 991.98px) {
             .login-wrapper { flex-direction: column; }
-            .login-left { width: 100%; padding: 2rem 2rem 1.5rem; }
-            .login-right { width: 100%; padding: 2rem; }
+            .login-left { 
+                width: 100%; 
+                padding: 2rem 1.5rem 1.5rem;
+                min-height: auto;
+            }
+            .login-right { width: 100%; padding: 2rem 1.5rem; }
             .login-left .headline { font-size: 1.35rem; }
             .login-stats { gap: 1.5rem; }
+            
+            /* Move footer inside form container on mobile */
+            .login-footer-desktop { display: none; }
+            .login-footer-mobile { 
+                display: block;
+                text-align: center;
+                font-size: .65rem;
+                color: var(--slate-soft);
+                margin-top: 1.5rem;
+                padding-top: 1.5rem;
+                border-top: 1px solid var(--hairline);
+            }
         }
         @media (max-width: 575.98px) {
-            .login-left { padding: 1.5rem; }
-            .login-right { padding: 1.25rem; }
+            .login-left { 
+                padding: 1.5rem 1.25rem 1.25rem;
+            }
+            .login-right { 
+                padding: 1.5rem 1.25rem 1.25rem;
+                padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+            }
             .login-stats { flex-wrap: wrap; gap: 1rem; }
+            
+            /* Fix overlapping text - adjust spacing */
+            .login-left .headline {
+                font-size: 1.25rem;
+                margin-bottom: 1.5rem !important;
+            }
+            
+            /* Ensure form fits above fold */
+            .login-form-box {
+                max-width: 100%;
+            }
+            .login-form-box h2 {
+                font-size: 1.25rem;
+                margin-bottom: .25rem;
+            }
+            .login-form-box .subtitle {
+                font-size: .75rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            /* Improve form field contrast and touch targets */
+            .login-form-box .form-label {
+                font-size: .7rem;
+                color: #374151; /* Darker for WCAG AAA */
+            }
+            .login-form-box .form-control {
+                min-height: 44px; /* Touch target size */
+                font-size: .85rem;
+            }
+            .login-form-box .input-group-text {
+                min-width: 44px;
+                justify-content: center;
+            }
+            .login-form-box .btn-toggle-pw {
+                min-width: 44px;
+                min-height: 44px;
+            }
+            
+            /* Improve checkbox/link contrast */
+            .form-check-label {
+                color: #374151 !important; /* WCAG AAA compliant */
+            }
+            .forgot-link {
+                color: var(--gold-deep) !important;
+                font-weight: 600;
+            }
+            
+            /* Ensure button is fully visible */
+            .login-form-box .btn-signin {
+                margin-bottom: 0;
+                min-height: 44px;
+            }
         }
     </style>
 </head>
@@ -294,8 +367,8 @@
             <div class="headline typewriter" id="typewriter" style="font-size:2rem;"></div>
         </div>
 
-        <!-- Footer -->
-        <div style="position:absolute;bottom:2rem;left:0;right:0;text-align:center;">
+        <!-- Footer - desktop only -->
+        <div class="login-footer-desktop" style="position:absolute;bottom:2rem;left:0;right:0;text-align:center;">
             <div class="login-footer">
                 &copy; <?= date('Y') ?> Empower Investment Club &middot; Kampala, Uganda
             </div>
@@ -380,6 +453,11 @@
                 </button>
             </form>
 
+            <!-- Footer - mobile only -->
+            <div class="login-footer-mobile" style="display:none;">
+                &copy; <?= date('Y') ?> Empower Investment Club &middot; Kampala, Uganda
+            </div>
+
         </div>
     </div>
 
@@ -388,8 +466,8 @@
 <script>
 (function () {
     'use strict';
-    // Typewriter animation
-    const text = "Unleash our financial potential.";
+    // Typewriter animation - Changed to "your" for user-centric tone
+    const text = "Unleash your financial potential.";
     const el = document.getElementById('typewriter');
     let i = 0;
     function type() {
