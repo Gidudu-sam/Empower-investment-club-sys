@@ -1,0 +1,148 @@
+name: CI - Code Validation
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**', 'fix/**', 'hotfix/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate:
+    name: PHP Syntax & Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.0'
+        extensions: pdo, pdo_mysql, mbstring, json, openssl, curl, gd, xml, zip
+        coverage: none
+        
+    - name: Validate PHP syntax
+      run: |
+        echo "🔍 Validating PHP syntax in all files..."
+        find . -type f -name "*.php" ! -path "./vendor/*" ! -path "./.git/*" -exec php -l {} \; | tee syntax-check.log
+        
+        if grep -q "Parse error" syntax-check.log; then
+          echo "❌ PHP syntax errors found!"
+          exit 1
+        else
+          echo "✅ All PHP files have valid syntax"
+        fi
+        
+    - name: Check for exposed secrets
+      run: |
+        echo "🔐 Checking for accidentally committed secrets..."
+        
+        # Check for common secret patterns
+        SECRETS_FOUND=0
+        
+        # Check for database passwords in non-example files
+        if grep -r --include="*.php" "DB_PASS.*=.*['\"].\{8,\}['\"]" --exclude-dir=vendor --exclude="*.example.php" --exclude="database.php" --exclude="*secrets*" .; then
+          echo "⚠️  WARNING: Potential database password found"
+          SECRETS_FOUND=1
+        fi
+        
+        # Check for hardcoded API keys
+        if grep -r --include="*.php" -E "(api_key|apikey|api-key).*=.*['\"][A-Za-z0-9]{20,}['\"]" --exclude-dir=vendor .; then
+          echo "⚠️  WARNING: Potential API key found"
+          SECRETS_FOUND=1
+        fi
+        
+        # Check for private keys
+        if grep -r --include="*.php" "BEGIN.*PRIVATE KEY" --exclude-dir=vendor .; then
+          echo "⚠️  WARNING: Private key found"
+          SECRETS_FOUND=1
+        fi
+        
+        if [ $SECRETS_FOUND -eq 0 ]; then
+          echo "✅ No exposed secrets detected"
+        else
+          echo "❌ Potential secrets detected - please review"
+          exit 1
+        fi
+        
+    - name: Verify .gitignore coverage
+      run: |
+        echo "📋 Verifying .gitignore protects sensitive files..."
+        
+        # Check that critical patterns are ignored
+        REQUIRED_IGNORES=(".env" "vendor/" "backups/" "/results/" "*secrets*")
+        MISSING_IGNORES=()
+        
+        for pattern in "${REQUIRED_IGNORES[@]}"; do
+          if ! grep -q "$pattern" .gitignore; then
+            MISSING_IGNORES+=("$pattern")
+          fi
+        done
+        
+        if [ ${#MISSING_IGNORES[@]} -eq 0 ]; then
+          echo "✅ All critical patterns are in .gitignore"
+        else
+          echo "⚠️  WARNING: Missing .gitignore patterns:"
+          printf '%s\n' "${MISSING_IGNORES[@]}"
+          exit 1
+        fi
+        
+    - name: Install Composer dependencies
+      run: |
+        echo "📦 Installing Composer dependencies..."
+        composer validate --strict
+        composer install --prefer-dist --no-progress --no-interaction
+        
+    - name: Verify Composer lock file
+      run: |
+        echo "🔒 Verifying composer.lock is up to date..."
+        composer validate --no-check-all --no-check-publish
+        
+        if git diff --exit-code composer.lock; then
+          echo "✅ composer.lock is up to date"
+        else
+          echo "❌ composer.lock is out of sync with composer.json"
+          echo "Run 'composer update' locally and commit the changes"
+          exit 1
+        fi
+        
+    - name: Check for test database guard
+      run: |
+        echo "🛡️  Verifying test safety guard exists..."
+        
+        if [ -f "tests/test_safety_guard.php" ]; then
+          echo "✅ Test safety guard found"
+          
+          # Verify it blocks production database
+          if grep -q "empower_db" tests/test_safety_guard.php && grep -q "REFUSED" tests/test_safety_guard.php; then
+            echo "✅ Safety guard properly configured to block production database"
+          else
+            echo "⚠️  WARNING: Safety guard may not properly protect production"
+          fi
+        else
+          echo "⚠️  WARNING: test_safety_guard.php not found"
+        fi
+        
+    - name: Summary
+      if: always()
+      run: |
+        echo ""
+        echo "=========================================="
+        echo "         CI VALIDATION SUMMARY"
+        echo "=========================================="
+        echo ""
+        echo "This CI workflow validates:"
+        echo "  ✓ PHP syntax across all files"
+        echo "  ✓ No exposed secrets in code"
+        echo "  ✓ .gitignore protects sensitive files"
+        echo "  ✓ Composer dependencies installable"
+        echo "  ✓ composer.lock up to date"
+        echo "  ✓ Test safety guards in place"
+        echo ""
+        echo "⚠️  This workflow does NOT:"
+        echo "  ✗ Run application tests (require database)"
+        echo "  ✗ Deploy to any environment"
+        echo "  ✗ Modify production systems"
+        echo ""
+        echo "=========================================="
