@@ -1,5 +1,7 @@
 {
     "name": "empower/investment-club",
+    "description": "Empower Investment Club Management System - Financial SACCO platform for savings, loans, shares, and fixed deposits",
+    "license": "proprietary",
     "require": {
         "minishlink/web-push": "^8.0",
         "phpmailer/phpmailer": "^7.1",
