@@ -29,11 +29,11 @@ $loanData = $preLoan ?? null;
 <div class="row g-4">
 <div class="col-lg-8">
 
-    <!-- Loan Search -->
+    <!-- Member/Loan Search -->
     <div class="card mb-4">
         <div class="card-header d-flex align-items-center gap-2">
-            <i class="bi bi-bank2" style="color:var(--brand-orange)"></i>
-            <h6 class="mb-0 fw-semibold">Select Loan</h6>
+            <i class="bi bi-person-fill" style="color:var(--brand-orange)"></i>
+            <h6 class="mb-0 fw-semibold">Search Member</h6>
         </div>
         <div class="card-body p-4">
             <input type="hidden" name="loan_id" id="loanId" value="<?= (int)($repayment['loan_id'] ?? $loanData['id'] ?? 0) ?>">
@@ -43,55 +43,73 @@ $loanData = $preLoan ?? null;
             <div id="loanCard" class="p-3 rounded-3 bg-light border">
                 <?php include __DIR__ . '/partials/loan-card.php'; ?>
                 <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="clearLoan">
-                    <i class="bi bi-x me-1"></i>Change Loan
+                    <i class="bi bi-x me-1"></i>Change Member/Loan
                 </button>
             </div>
             <?php else: ?>
-            <label class="form-label fw-semibold" for="loanSearch">Search Loan <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="memberSearch">Member Name or Number <span class="text-danger">*</span></label>
             <div class="input-group mb-1">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" id="loanSearch" class="form-control<?= $cls('loan_id') ?>"
-                       placeholder="Member name, loan number..." autocomplete="off">
+                <input type="text" id="memberSearch" class="form-control<?= $cls('loan_id') ?>"
+                       placeholder="Type member name or number..." autocomplete="off">
             </div>
             <?php if ($err('loan_id')): ?><div class="text-danger small mb-2"><?= htmlspecialchars($err('loan_id')) ?></div><?php endif; ?>
-            <div id="loanDropdown" class="list-group shadow"
+            <div id="memberDropdown" class="list-group shadow"
                  style="position:absolute;z-index:1050;width:100%;max-width:480px;display:none;max-height:260px;overflow-y:auto;"></div>
             <div id="loanCard" class="d-none p-3 rounded-3 bg-light border mt-2">
                 <div id="loanCardContent"></div>
                 <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="clearLoan">
-                    <i class="bi bi-x me-1"></i>Change Loan
+                    <i class="bi bi-x me-1"></i>Change Member/Loan
                 </button>
             </div>
             <?php endif; ?>
         </div>
     </div>
 
-    <!-- Payment Type (for Business Loans) -->
+    <!-- Payment Type - Auto-detected with option to override -->
     <div class="card mb-4" id="paymentTypeCard" style="display:none;">
         <div class="card-header d-flex align-items-center gap-2">
             <i class="bi bi-tag" style="color:var(--brand-orange)"></i>
             <h6 class="mb-0 fw-semibold">Payment Type</h6>
         </div>
         <div class="card-body p-4">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">What are you paying? <span class="text-danger">*</span></label>
-                    <select name="payment_type" id="paymentType" class="form-select">
-                        <option value="installment">Installment Payment</option>
-                        <option value="interest">Monthly Interest Payment</option>
-                        <option value="weekly_savings">Weekly Interest Payment</option>
-                        <option value="principal">Principal Repayment</option>
-                        <option value="settlement">Full Settlement</option>
-                    </select>
-                </div>
-                <div class="col-md-6" id="weekCoveredGroup" style="display:none;">
-                    <label class="form-label fw-semibold">Week Covered</label>
-                    <input type="text" name="week_covered" id="weekCovered" class="form-control"
-                           placeholder="e.g. Week 30, Jul 2026" value="<?= htmlspecialchars($repayment['week_covered'] ?? '') ?>">
-                </div>
+            <!-- Auto-detected payment type (hidden input) -->
+            <input type="hidden" name="payment_type" id="paymentTypeHidden" value="installment">
+            
+            <div class="alert alert-info mb-3" id="autoDetectedType">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Payment Type:</strong> <span id="autoDetectedLabel"><?= htmlspecialchars($repaymentFrequencyLabel ?? 'Regular Installment Payment') ?></span>
+                <div class="small mt-1" id="autoDetectedHint">This payment will reduce your loan balance according to the repayment schedule.</div>
             </div>
-            <div class="mt-3 p-2 rounded" style="background:var(--paper);font-size:.72rem;color:var(--slate);" id="paymentTypeHint">
-                Standard installment payment — reduces the outstanding loan balance.
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="showAdvancedPaymentType">
+                <label class="form-check-label small text-muted" for="showAdvancedPaymentType">
+                    Show advanced payment options (settlement, interest-only, etc.)
+                </label>
+            </div>
+
+            <div id="advancedPaymentTypeGroup" style="display:none;">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">What are you paying? <span class="text-danger">*</span></label>
+                        <select name="payment_type_override" id="paymentType" class="form-select">
+                            <option value="installment">Regular Installment Payment</option>
+                            <option value="interest">Monthly Interest Payment</option>
+                            <option value="weekly_savings">Weekly Interest Payment</option>
+                            <option value="principal">Principal Repayment</option>
+                            <option value="settlement">Full Settlement</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6" id="weekCoveredGroup" style="display:none;">
+                        <label class="form-label fw-semibold">Week Covered</label>
+                        <input type="text" name="week_covered" id="weekCovered" class="form-control"
+                               placeholder="e.g. Week 30, Jul 2026" value="<?= htmlspecialchars($repayment['week_covered'] ?? '') ?>">
+                    </div>
+                </div>
+                <div class="mt-3 p-2 rounded" style="background:var(--paper);font-size:.72rem;color:var(--slate);" id="paymentTypeHint">
+                    Standard installment payment — reduces the outstanding loan balance.
+                </div>
             </div>
         </div>
     </div>
@@ -220,12 +238,14 @@ $loanData = $preLoan ?? null;
                 <dd class="col-5" id="sumLoanAmt"><?= $loanData ? 'Shs '.number_format($loanData['loan_amount'],2) : '—' ?></dd>
                 <dt class="col-7 text-muted">Total Payable</dt>
                 <dd class="col-5" id="sumTotal"><?= $loanData ? 'Shs '.number_format($loanData['total_payable'],2) : '—' ?></dd>
-                <dt class="col-7 text-muted" id="sumExpectedLabel" style="display:none;">Expected Payment</dt>
-                <dd class="col-5 fw-semibold" style="color:var(--brand-orange)" id="sumExpectedPayment">—</dd>
+                <?php if (isset($nextInstallmentAmount) && $nextInstallmentAmount > 0): ?>
+                <dt class="col-7 text-muted fw-semibold" style="color:var(--brand-orange)">Expected Payment</dt>
+                <dd class="col-5 fw-semibold" style="color:var(--brand-orange)">Shs <?= number_format($nextInstallmentAmount, 2) ?></dd>
+                <?php endif; ?>
                 <dt class="col-7 text-muted">Outstanding</dt>
                 <dd class="col-5 fw-bold text-danger" id="sumOutstanding"><?= $loanData ? 'Shs '.number_format($loanData['outstanding'],2) : '—' ?></dd>
                 <dt class="col-7 text-muted" id="sumOutstandingPenaltyLabel" style="display:none;">Outstanding Penalty</dt>
-                <dd class="col-5 fw-bold text-warning" id="sumOutstandingPenalty"><?= ($outstandingPenalty ?? 0) > 0 ? 'Shs '.number_format($outstandingPenalty,2) : 'Shs 0.00' ?></dd>
+                <dd class="col-5 fw-bold text-warning" id="sumOutstandingPenalty" style="display:none;">Shs 0.00</dd>
                 <hr class="my-2">
                 <dt class="col-7 text-muted fw-bold">Paying Now</dt>
                 <dd class="col-5 fw-bold fs-5 mb-1" style="color:var(--brand-orange)" id="sumPaying">Shs 0.00</dd>
@@ -261,15 +281,16 @@ const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textCon
 const showElement = (id) => { const e=document.getElementById(id); if(e) e.style.display=''; };
 const hideElement = (id) => { const e=document.getElementById(id); if(e) e.style.display='none'; };
 
-let currentOutstanding = <?= $loanData ? (float)$loanData['outstanding'] : 0 ?>;
-let currentOutstandingPenalty = <?= (float)($outstandingPenalty ?? 0) ?>;
-let currentInterestAmount = <?= $loanData ? (float)$loanData['interest_amount'] : 0 ?>;
-let currentInterestPaidTotal = <?= $loanData ? (float)($loanData['interest_paid_total'] ?? 0) : 0 ?>;
-let currentLoanAmount = <?= $loanData ? (float)$loanData['loan_amount'] : 0 ?>;
-let currentLoanStatus = '<?= $loanData['status'] ?? '' ?>';
-let currentMonthlyInstallment = <?= $loanData ? (float)($loanData['monthly_installment'] ?? 0) : 0 ?>;
-let currentWeeklySavingsAmount = <?= $loanData ? (float)($loanData['weekly_savings_amount'] ?? 0) : 0 ?>;
-let currentLoanTypeId = <?= $loanData ? (int)($loanData['loan_type_id'] ?? 1) : 1 ?>;
+// Make these variables global so selectLoan can access them
+window.currentOutstanding = <?= $loanData ? (float)$loanData['outstanding'] : 0 ?>;
+window.currentOutstandingPenalty = <?= (float)($outstandingPenalty ?? 0) ?>;
+window.currentInterestAmount = <?= $loanData ? (float)$loanData['interest_amount'] : 0 ?>;
+window.currentInterestPaidTotal = <?= $loanData ? (float)($loanData['interest_paid_total'] ?? 0) : 0 ?>;
+window.currentLoanAmount = <?= $loanData ? (float)$loanData['loan_amount'] : 0 ?>;
+window.currentLoanStatus = '<?= $loanData['status'] ?? '' ?>';
+window.currentMonthlyInstallment = <?= $loanData ? (float)($loanData['monthly_installment'] ?? 0) : 0 ?>;
+window.currentWeeklySavingsAmount = <?= $loanData ? (float)($loanData['weekly_savings_amount'] ?? 0) : 0 ?>;
+window.currentLoanTypeId = <?= $loanData ? (int)($loanData['loan_type_id'] ?? 1) : 1 ?>;
 
 const amtEl     = document.getElementById('amount_paid');
 const penaltyEl = document.getElementById('penalty_paid');
@@ -291,11 +312,12 @@ const loanId    = document.getElementById('loanId');
 
 function updatePenaltyFieldVisibility(){
     const group = document.getElementById('penaltyGroup');
+    const penaltyEl = document.getElementById('penalty_paid');
     if (!group) return;
     // Only show penalty field if loan is overdue AND has outstanding penalty
-    const shouldShowPenalty = (currentLoanStatus === 'overdue' && currentOutstandingPenalty > 0);
+    const shouldShowPenalty = (window.currentLoanStatus === 'overdue' && window.currentOutstandingPenalty > 0);
     group.style.display = shouldShowPenalty ? '' : 'none';
-    if (penaltyEl) penaltyEl.max = currentOutstandingPenalty.toFixed(2);
+    if (penaltyEl) penaltyEl.max = window.currentOutstandingPenalty.toFixed(2);
     
     // Update summary labels visibility
     const penaltyLabel = document.getElementById('sumOutstandingPenaltyLabel');
@@ -303,17 +325,21 @@ function updatePenaltyFieldVisibility(){
     const penaltyValue = document.getElementById('sumOutstandingPenalty');
     if (penaltyValue) penaltyValue.style.display = shouldShowPenalty ? '' : 'none';
     
-    setText('sumOutstandingPenalty', 'Shs ' + fmt(currentOutstandingPenalty));
+    const fmt = n => parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+    const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    setText('sumOutstandingPenalty', 'Shs ' + fmt(window.currentOutstandingPenalty));
     const hint = document.getElementById('penaltyHint');
-    if (hint) hint.textContent = currentOutstandingPenalty > 0
-        ? 'Max collectible now: Shs ' + fmt(currentOutstandingPenalty)
+    if (hint) hint.textContent = window.currentOutstandingPenalty > 0
+        ? 'Max collectible now: Shs ' + fmt(window.currentOutstandingPenalty)
         : '';
     if (!shouldShowPenalty && penaltyEl) penaltyEl.value = '0';
 }
+window.updatePenaltyFieldVisibility = updatePenaltyFieldVisibility;
 
 function updateExpectedPaymentDisplay(){
     const expectedLabel = document.getElementById('sumExpectedLabel');
     const expectedValue = document.getElementById('sumExpectedPayment');
+    const fmt = n => parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
     
     if (!expectedLabel || !expectedValue) return;
     
@@ -321,13 +347,13 @@ function updateExpectedPaymentDisplay(){
     let expectedPayment = 0;
     let paymentLabel = 'Expected Payment';
     
-    if (currentLoanTypeId == 2) {
+    if (window.currentLoanTypeId == 2) {
         // Business Loan - show weekly savings amount
-        expectedPayment = currentWeeklySavingsAmount;
+        expectedPayment = window.currentWeeklySavingsAmount;
         paymentLabel = 'Weekly Payment';
     } else {
         // Normal/Asset Financing - show monthly installment
-        expectedPayment = currentMonthlyInstallment;
+        expectedPayment = window.currentMonthlyInstallment;
         paymentLabel = 'Monthly Installment';
     }
     
@@ -341,19 +367,25 @@ function updateExpectedPaymentDisplay(){
         expectedValue.style.display = 'none';
     }
 }
+window.updateExpectedPaymentDisplay = updateExpectedPaymentDisplay;
 
 function updateSummary(){
+    const amtEl = document.getElementById('amount_paid');
+    const penaltyEl = document.getElementById('penalty_paid');
+    const fmt = n => parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+    const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    
     const paying   = parseFloat(amtEl?.value)||0;
-    const penalty  = Math.min(parseFloat(penaltyEl?.value)||0, currentOutstandingPenalty, paying);
+    const penalty  = Math.min(parseFloat(penaltyEl?.value)||0, window.currentOutstandingPenalty, paying);
     const nonPenaltyPaid = Math.max(0, paying - penalty);
     
     // Calculate interest and principal allocation (same logic as backend)
-    const interestRemaining = Math.max(0, currentInterestAmount - currentInterestPaidTotal);
-    const totalPayableOriginal = currentLoanAmount + currentInterestAmount;
+    const interestRemaining = Math.max(0, window.currentInterestAmount - window.currentInterestPaidTotal);
+    const totalPayableOriginal = window.currentLoanAmount + window.currentInterestAmount;
     
     let interestPaid = 0.0;
     if (interestRemaining > 0.005 && totalPayableOriginal > 0 && nonPenaltyPaid > 0) {
-        const interestRatio = currentInterestAmount / totalPayableOriginal;
+        const interestRatio = window.currentInterestAmount / totalPayableOriginal;
         interestPaid = Math.min(
             Math.round(nonPenaltyPaid * interestRatio * 100) / 100,
             interestRemaining,
@@ -362,12 +394,12 @@ function updateSummary(){
     }
     const principal = Math.max(0, Math.round((nonPenaltyPaid - interestPaid) * 100) / 100);
     
-    const after = Math.max(0, currentOutstanding - nonPenaltyPaid);
+    const after = Math.max(0, window.currentOutstanding - nonPenaltyPaid);
     
     setText('sumPaying', 'Shs ' + fmt(paying));
     
     // Show/hide penalty row based on whether loan is overdue and has penalty
-    const showPenalty = (currentLoanStatus === 'overdue' && penalty > 0);
+    const showPenalty = (window.currentLoanStatus === 'overdue' && penalty > 0);
     const penaltyLabel = document.getElementById('sumPenaltyLabel');
     const penaltyValue = document.getElementById('sumPenaltyPortion');
     if (penaltyLabel) penaltyLabel.style.display = showPenalty ? '' : 'none';
@@ -380,10 +412,11 @@ function updateSummary(){
     setText('sumPrincipalPortion', 'Shs ' + fmt(principal));
     setText('sumAfter',  paying > 0 ? 'Shs ' + fmt(after) : '—');
     const hint = document.getElementById('maxHint');
-    if(hint) hint.textContent = currentOutstanding > 0
-        ? 'Max payable: Shs ' + fmt(currentOutstanding)
+    if(hint) hint.textContent = window.currentOutstanding > 0
+        ? 'Max payable: Shs ' + fmt(window.currentOutstanding)
         : '';
 }
+window.updateSummary = updateSummary;
 
 if(amtEl) amtEl.addEventListener('input', updateSummary);
 if(penaltyEl) penaltyEl.addEventListener('input', updateSummary);
@@ -391,9 +424,9 @@ updatePenaltyFieldVisibility();
 updateExpectedPaymentDisplay();
 updateSummary();
 
-// Loan search autocomplete
-const searchEl  = document.getElementById('loanSearch');
-const dropdown  = document.getElementById('loanDropdown');
+// Member search autocomplete - fetches member's active loan automatically
+const searchEl  = document.getElementById('memberSearch');
+const dropdown  = document.getElementById('memberDropdown');
 const loanCard  = document.getElementById('loanCard');
 const loanContent = document.getElementById('loanCardContent');
 let timer;
@@ -406,47 +439,105 @@ function escHtml(str){ const d=document.createElement('div'); d.textContent=str|
 if(searchEl){
     searchEl.addEventListener('input', function(){
         clearTimeout(timer);
-        if(this.value.trim().length < 2){ if(dropdown) dropdown.style.display='none'; return; }
+        const query = this.value.trim();
+        console.log('🔍 Search input:', query, 'Length:', query.length);
+        if(query.length < 2){ 
+            if(dropdown) dropdown.style.display='none'; 
+            return; 
+        }
         timer = setTimeout(() => {
-            fetch('<?=APP_URL?>/index.php?page=repayment-loan-search&q='+encodeURIComponent(this.value.trim()))
-                .then(r => r.json())
+            const url = '<?=APP_URL?>/index.php?page=repayment-member-search&q='+encodeURIComponent(query);
+            console.log('📡 Fetching:', url);
+            fetch(url)
+                .then(r => {
+                    console.log('✅ Response status:', r.status);
+                    if (!r.ok) {
+                        console.error('❌ HTTP Error:', r.status, r.statusText);
+                    }
+                    return r.json();
+                })
                 .then(data => {
+                    console.log('📦 Data received:', data);
+                    if (data.error) {
+                        console.error('❌ Backend error:', data.error);
+                        dropdown.innerHTML = '<div class="list-group-item text-danger small">Error: ' + data.error + '</div>';
+                        dropdown.style.display='block';
+                        return;
+                    }
                     dropdown.innerHTML = '';
-                    if(!data.loans?.length){ dropdown.style.display='none'; return; }
-                    data.loans.forEach(l => {
+                    if(!data.members?.length){ 
+                        console.warn('⚠️ No members found with active loans for query:', query);
+                        dropdown.innerHTML = '<div class="list-group-item text-muted small">No members with active loans found</div>';
+                        dropdown.style.display='block';
+                        return; 
+                    }
+                    console.log('👥 Found', data.members.length, 'members');
+                    data.members.forEach(m => {
                         const a = document.createElement('a');
                         a.href='#'; a.className='list-group-item list-group-item-action py-2 px-3';
-                        const badge = l.status==='overdue' ? '<span class="badge bg-danger ms-1 small">Overdue</span>' : '<span class="badge bg-success ms-1 small">Active</span>';
-                        a.innerHTML = `<div class="fw-semibold small">${escHtml(l.loan_number)} ${badge}</div>
-                                       <div class="text-muted" style="font-size:.75rem">${escHtml(l.member_name)} — Outstanding: Shs ${parseFloat(l.outstanding).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}</div>`;
-                        a.addEventListener('click', e => { e.preventDefault(); selectLoan(l); });
+                        
+                        let loanInfo = '';
+                        if (m.active_loan) {
+                            const badge = m.active_loan.status === 'overdue' 
+                                ? '<span class="badge bg-danger ms-1 small">Overdue</span>' 
+                                : '<span class="badge bg-success ms-1 small">Active</span>';
+                            loanInfo = `<div class="text-muted" style="font-size:.72rem">
+                                ${escHtml(m.active_loan.loan_number)} ${badge} — Outstanding: Shs ${parseFloat(m.active_loan.outstanding).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
+                            </div>`;
+                        } else {
+                            loanInfo = '<div class="text-muted small">No active loan</div>';
+                        }
+                        
+                        a.innerHTML = `<div class="fw-semibold small">${escHtml(m.member_name)} <span class="text-muted">(${escHtml(m.member_number)})</span></div>${loanInfo}`;
+                        
+                        a.addEventListener('click', e => { 
+                            e.preventDefault(); 
+                            if (m.active_loan) {
+                                selectLoan(m.active_loan); 
+                            }
+                        });
                         dropdown.appendChild(a);
                     });
                     dropdown.style.display = 'block';
-                }).catch(()=>{});
+                    console.log('✅ Dropdown displayed with', data.members.length, 'members');
+                }).catch(err => {
+                    console.error('❌ Fetch error:', err);
+                    dropdown.innerHTML = '<div class="list-group-item text-danger small">Network error - check console</div>';
+                    dropdown.style.display='block';
+                });
         }, 300);
     });
     document.addEventListener('click', e => { if(!searchEl.contains(e.target)) dropdown.style.display='none'; });
 }
 
 function selectLoan(l){
-    if(loanId)      loanId.value     = l.id;
+    const loanIdEl = document.getElementById('loanId');
+    if(loanIdEl) loanIdEl.value = l.id;
     const memberHidden = document.getElementById('hiddenMemberId');
     if(memberHidden) memberHidden.value = l.member_id||0;
-    if(dropdown)    dropdown.style.display = 'none';
-    currentOutstanding = parseFloat(l.outstanding)||0;
-    currentOutstandingPenalty = parseFloat(l.outstanding_penalty)||0;
-    currentInterestAmount = parseFloat(l.interest_amount)||0;
-    currentInterestPaidTotal = parseFloat(l.interest_paid_total)||0;
-    currentLoanAmount = parseFloat(l.loan_amount)||0;
-    currentLoanStatus = l.status || '';
-    currentMonthlyInstallment = parseFloat(l.monthly_installment)||0;
-    currentWeeklySavingsAmount = parseFloat(l.weekly_savings_amount)||0;
-    currentLoanTypeId = parseInt(l.loan_type_id)||1;
-    updatePenaltyFieldVisibility();
-    updateExpectedPaymentDisplay();
+    const dropdown = document.getElementById('memberDropdown');
+    if(dropdown) dropdown.style.display = 'none';
+    
+    window.currentOutstanding = parseFloat(l.outstanding)||0;
+    window.currentOutstandingPenalty = parseFloat(l.outstanding_penalty)||0;
+    window.currentInterestAmount = parseFloat(l.interest_amount)||0;
+    window.currentInterestPaidTotal = parseFloat(l.interest_paid_total)||0;
+    window.currentLoanAmount = parseFloat(l.loan_amount)||0;
+    window.currentLoanStatus = l.status || '';
+    window.currentMonthlyInstallment = parseFloat(l.monthly_installment)||0;
+    window.currentWeeklySavingsAmount = parseFloat(l.weekly_savings_amount)||0;
+    window.currentLoanTypeId = parseInt(l.loan_type_id)||1;
+    
+    if (window.updatePenaltyFieldVisibility) window.updatePenaltyFieldVisibility();
+    if (window.updateExpectedPaymentDisplay) window.updateExpectedPaymentDisplay();
 
     // Populate card
+    const loanContent = document.getElementById('loanCardContent');
+    const loanCard = document.getElementById('loanCard');
+    const searchEl = document.getElementById('memberSearch');
+    
+    function escHtml(str){ const d=document.createElement('div'); d.textContent=str||''; return d.innerHTML; }
+    
     if(loanContent) loanContent.innerHTML =
         `<div class="row g-2 small">
             <div class="col-6"><span class="text-muted">Loan No.</span><br><strong>${escHtml(l.loan_number)}</strong></div>
@@ -460,57 +551,85 @@ function selectLoan(l){
     if(searchEl) searchEl.value = '';
 
     // Update summary
+    const fmt = n => parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+    const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    
     setText('sumLoanNo', l.loan_number);
     setText('sumMember',  l.member_name);
+    setText('sumLoanAmt', 'Shs ' + fmt(l.loan_amount));
+    setText('sumTotal', 'Shs ' + fmt(l.total_payable));
     setText('sumOutstanding', 'Shs ' + fmt(l.outstanding));
 
-    // Show payment type card for Business Loans (loan_type_id == 2)
+    // Update payment type label based on loan's repayment frequency
     const payTypeCard = document.getElementById('paymentTypeCard');
-    const payTypeSelect = document.getElementById('paymentType');
+    const payTypeHidden = document.getElementById('paymentTypeHidden');
+    const autoDetectedLabel = document.getElementById('autoDetectedLabel');
+    const autoDetectedHint = document.getElementById('autoDetectedHint');
+    
     if (payTypeCard) {
-        // Always show it so user can choose payment type
         payTypeCard.style.display = 'block';
-
-        // Reset options based on loan type
-        if (l.loan_type_id == 2) {
-            // Business Loan: show all options
-            payTypeSelect.innerHTML = `
-                <option value="interest">Monthly Interest Payment</option>
-                <option value="weekly_savings">Weekly Interest Payment</option>
-                <option value="principal">Principal Repayment</option>
-                <option value="settlement">Full Settlement</option>
-            `;
-        } else {
-            // Normal / Asset Financing
-            payTypeSelect.innerHTML = `
-                <option value="installment">Installment Payment</option>
-                <option value="settlement">Full Settlement</option>
-            `;
+    }
+    
+    if (payTypeHidden) {
+        payTypeHidden.value = 'installment';
+    }
+    
+    if (autoDetectedLabel) {
+        let label = 'Regular Installment Payment';
+        const freq = l.repayment_frequency || 'monthly';
+        
+        if (freq === 'weekly') {
+            label = 'Weekly Installment Payment';
+        } else if (freq === 'monthly') {
+            label = 'Monthly Installment Payment';
         }
-        payTypeSelect.dispatchEvent(new Event('change'));
+        
+        autoDetectedLabel.textContent = label;
+    }
+    
+    if (autoDetectedHint) {
+        autoDetectedHint.textContent = 'This payment will reduce your loan balance according to the repayment schedule (principal + interest).';
     }
 
-    updateSummary();
+    if (window.updateSummary) window.updateSummary();
 }
 
 document.getElementById('clearLoan')?.addEventListener('click', () => {
-    if(loanId) loanId.value = '0';
-    if(loanCard){ loanCard.classList.add('d-none'); if(loanContent) loanContent.innerHTML=''; }
+    const loanIdEl = document.getElementById('loanId');
+    const loanCardEl = document.getElementById('loanCard');
+    const loanContentEl = document.getElementById('loanCardContent');
+    const searchEl = document.getElementById('memberSearch');
+    
+    if(loanIdEl) loanIdEl.value = '0';
+    if(loanCardEl){ 
+        loanCardEl.classList.add('d-none'); 
+        if(loanContentEl) loanContentEl.innerHTML=''; 
+    }
     if(searchEl) searchEl.value = '';
-    currentOutstanding = 0;
-    currentOutstandingPenalty = 0;
-    currentInterestAmount = 0;
-    currentInterestPaidTotal = 0;
-    currentLoanAmount = 0;
-    currentLoanStatus = '';
-    currentMonthlyInstallment = 0;
-    currentWeeklySavingsAmount = 0;
-    currentLoanTypeId = 1;
-    updatePenaltyFieldVisibility();
-    updateExpectedPaymentDisplay();
-    setText('sumLoanNo','—'); setText('sumMember','—');
-    setText('sumOutstanding','—'); setText('sumPaying','Shs 0.00'); setText('sumAfter','—');
-    updateSummary();
+    
+    window.currentOutstanding = 0;
+    window.currentOutstandingPenalty = 0;
+    window.currentInterestAmount = 0;
+    window.currentInterestPaidTotal = 0;
+    window.currentLoanAmount = 0;
+    window.currentLoanStatus = '';
+    window.currentMonthlyInstallment = 0;
+    window.currentWeeklySavingsAmount = 0;
+    window.currentLoanTypeId = 1;
+    
+    if(window.updatePenaltyFieldVisibility) window.updatePenaltyFieldVisibility();
+    if(window.updateExpectedPaymentDisplay) window.updateExpectedPaymentDisplay();
+    
+    const setText = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    setText('sumLoanNo','—'); 
+    setText('sumMember','—');
+    setText('sumLoanAmt','—');
+    setText('sumTotal','—');
+    setText('sumOutstanding','—'); 
+    setText('sumPaying','Shs 0.00'); 
+    setText('sumAfter','—');
+    
+    if(window.updateSummary) window.updateSummary();
 });
 
 // Submit
@@ -533,14 +652,37 @@ form.addEventListener('submit', function(e){
 const payTypeSelect = document.getElementById('paymentType');
 const weekGroup = document.getElementById('weekCoveredGroup');
 const payHint = document.getElementById('paymentTypeHint');
+const showAdvancedCheckbox = document.getElementById('showAdvancedPaymentType');
+const advancedPaymentGroup = document.getElementById('advancedPaymentTypeGroup');
+
+// Toggle advanced payment options
+if (showAdvancedCheckbox && advancedPaymentGroup) {
+    showAdvancedCheckbox.addEventListener('change', function() {
+        advancedPaymentGroup.style.display = this.checked ? '' : 'none';
+        // Reset to installment when hiding advanced options
+        if (!this.checked) {
+            const payTypeHidden = document.getElementById('paymentTypeHidden');
+            if (payTypeHidden) payTypeHidden.value = 'installment';
+        }
+    });
+}
+
 if (payTypeSelect) {
     payTypeSelect.addEventListener('change', function() {
         const val = this.value;
+        
+        // Update the hidden field that actually gets submitted
+        const payTypeHidden = document.getElementById('paymentTypeHidden');
+        if (payTypeHidden) {
+            payTypeHidden.value = val;
+        }
+        
         // Show week field only for weekly_savings
         if (weekGroup) weekGroup.style.display = val === 'weekly_savings' ? '' : 'none';
+        
         // Update hint
         const hints = {
-            'installment': 'Standard installment payment — reduces the outstanding loan balance.',
+            'installment': 'Standard installment payment — reduces the outstanding loan balance (principal + interest).',
             'interest': 'Monthly interest payment — does NOT reduce the principal balance.',
             'weekly_savings': 'Weekly Interest Payment — tracked separately from the loan.',
             'principal': 'Principal repayment — directly reduces the outstanding loan balance.',
@@ -549,18 +691,19 @@ if (payTypeSelect) {
         if (payHint) payHint.textContent = hints[val] || '';
 
         // Penalty collection only applies to installment/settlement payments
-        // (Stage 17 Part C) -- the other payment types are Business-Loan-
-        // specific flows this stage does not extend penalty handling into.
         const penaltyGroup = document.getElementById('penaltyGroup');
+        const penaltyEl = document.getElementById('penalty_paid');
         const penaltyApplies = (val === 'installment' || val === 'settlement');
         if (penaltyGroup) {
             // Only show penalty if: payment type allows it AND loan is overdue AND has outstanding penalty
-            penaltyGroup.style.display = (penaltyApplies && currentLoanStatus === 'overdue' && currentOutstandingPenalty > 0) ? '' : 'none';
+            const shouldShow = penaltyApplies && window.currentLoanStatus === 'overdue' && window.currentOutstandingPenalty > 0;
+            penaltyGroup.style.display = shouldShow ? '' : 'none';
+            if (!shouldShow && penaltyEl) penaltyEl.value = '0';
         }
-        if (!penaltyApplies && penaltyEl) penaltyEl.value = '0';
-        updateSummary();
     });
 }
+
+})();
 
 // Show payment type card on page load if loan is pre-selected
 <?php if ($loanData): ?>
@@ -588,5 +731,4 @@ if (payTypeSelect) {
 })();
 <?php endif; ?>
 
-})();
 </script>

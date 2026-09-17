@@ -21,12 +21,14 @@ class RepaymentController extends Controller
     private RepaymentModel $model;
     private LoanModel      $loanModel;
     private MemberModel    $memberModel;
+    private PDO            $db;
 
     public function __construct()
     {
         $this->model       = new RepaymentModel();
         $this->loanModel   = new LoanModel();
         $this->memberModel = new MemberModel();
+        $this->db          = Database::getInstance()->getConnection();
         $this->loanModel->syncOverdueStatus();
     }
 
@@ -93,9 +95,27 @@ class RepaymentController extends Controller
         $preLoan = null;
         $preId   = (int)($_GET['loan_id'] ?? 0);
         $outstandingPenalty = 0.0;
+        $nextInstallmentAmount = 0.0;
         if ($preId > 0) {
             $preLoan = $this->loanModel->findWithDetails($preId);
             $outstandingPenalty = $this->model->getOutstandingPenalty($preId);
+            
+            // Get the next unpaid installment amount (expected payment)
+            $nextInstallment = $this->loanModel->getNextUnpaidInstallment($preId);
+            if ($nextInstallment) {
+                $nextInstallmentAmount = (float)$nextInstallment['amount_due'];
+            }
+        }
+
+        // Determine default payment type label based on loan's repayment frequency
+        $repaymentFrequencyLabel = 'Regular Installment Payment';
+        if ($preLoan) {
+            $freq = $preLoan['repayment_frequency'] ?? 'monthly';
+            if ($freq === 'weekly') {
+                $repaymentFrequencyLabel = 'Weekly Installment Payment';
+            } elseif ($freq === 'monthly') {
+                $repaymentFrequencyLabel = 'Monthly Installment Payment';
+            }
         }
 
         $this->render('repayments/form', [
@@ -111,6 +131,8 @@ class RepaymentController extends Controller
             'csrfToken'        => $this->getCsrf(),
             'preLoan'          => $preLoan,
             'outstandingPenalty' => $outstandingPenalty,
+            'nextInstallmentAmount' => $nextInstallmentAmount,
+            'repaymentFrequencyLabel' => $repaymentFrequencyLabel,
             // Stage — Loan Repayment Interest Recognition & Submission
             // Integrity: one fresh token per rendered form. Backed by
             // uk_repayments_submission_token (a real DB unique constraint)
@@ -241,6 +263,104 @@ class RepaymentController extends Controller
     }
 
     // ----------------------------------------------------------------
+    // AJAX — search members with active loans for repayment form
+    // ----------------------------------------------------------------
+    public function memberSearch(): void
+    {
+        Session::requireAuth();
+
+        $q = trim($_GET['q'] ?? '');
+        if (strlen($q) < 2) { $this->json(['members' => []]); return; }
+
+        try {
+            // Search members
+            $stmt = $this->db->prepare("
+                SELECT DISTINCT
+                    m.id,
+                    m.member_number,
+                    m.first_name,
+                    m.last_name,
+                    CONCAT(m.first_name, ' ', m.last_name) as full_name
+                FROM members m
+                INNER JOIN loans l ON l.member_id = m.id
+                WHERE (m.first_name LIKE ? OR m.last_name LIKE ? OR m.member_number LIKE ?)
+                  AND l.status IN ('active', 'overdue')
+                  AND m.status = 'active'
+                ORDER BY m.first_name, m.last_name
+                LIMIT 20
+            ");
+            $like = "%{$q}%";
+            $stmt->execute([$like, $like, $like]);
+            $members = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $out = [];
+            foreach ($members as $m) {
+                // Get member's active/overdue loan (prioritize overdue, then oldest active)
+                $loanStmt = $this->db->prepare("
+                    SELECT 
+                        l.id, l.loan_number, l.member_id, l.loan_amount, 
+                        l.interest_amount, l.total_payable, l.outstanding,
+                        l.monthly_installment, l.weekly_savings_amount,
+                        l.repayment_frequency, l.status, l.loan_type_id,
+                        lt.name AS loan_type_name,
+                        (SELECT COALESCE(SUM(lr.interest_paid), 0) 
+                         FROM loan_repayments lr 
+                         WHERE lr.loan_id = l.id) as interest_paid_total
+                    FROM loans l
+                    LEFT JOIN loan_types lt ON lt.id = l.loan_type_id
+                    WHERE l.member_id = ? 
+                      AND l.status IN ('active', 'overdue')
+                    ORDER BY 
+                        CASE WHEN l.status = 'overdue' THEN 0 ELSE 1 END,
+                        l.disbursement_date ASC
+                    LIMIT 1
+                ");
+                $loanStmt->execute([(int)$m['id']]);
+                $loan = $loanStmt->fetch(PDO::FETCH_ASSOC);
+
+                $memberData = [
+                    'id' => (int)$m['id'],
+                    'member_number' => $m['member_number'],
+                    'member_name' => $m['first_name'] . ' ' . $m['last_name'],
+                    'active_loan' => null,
+                ];
+
+                if ($loan) {
+                    $memberData['active_loan'] = [
+                        'id' => (int)$loan['id'],
+                        'loan_number' => $loan['loan_number'],
+                        'member_id' => (int)$loan['member_id'],
+                        'member_name' => $m['first_name'] . ' ' . $m['last_name'],
+                        'member_number' => $m['member_number'],
+                        'loan_amount' => (float)$loan['loan_amount'],
+                        'interest_amount' => (float)$loan['interest_amount'],
+                        'interest_paid_total' => (float)($loan['interest_paid_total'] ?? 0),
+                        'total_payable' => (float)$loan['total_payable'],
+                        'outstanding' => (float)$loan['outstanding'],
+                        'outstanding_penalty' => $this->model->getOutstandingPenalty((int)$loan['id']),
+                        'monthly_installment' => (float)($loan['monthly_installment'] ?? 0),
+                        'weekly_savings_amount' => (float)($loan['weekly_savings_amount'] ?? 0),
+                        'repayment_frequency' => $loan['repayment_frequency'] ?? 'monthly',
+                        'status' => $loan['status'],
+                        'loan_type_id' => (int)($loan['loan_type_id'] ?? 1),
+                        'loan_type_name' => $loan['loan_type_name'] ?? 'Normal Loan',
+                    ];
+                }
+
+                $out[] = $memberData;
+            }
+
+            $this->json(['members' => $out]);
+        } catch (PDOException $e) {
+            error_log("Member search DB error: " . $e->getMessage());
+            $this->json(['members' => [], 'error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            error_log("Member search error: " . $e->getMessage());
+            $this->json(['members' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+    // ----------------------------------------------------------------
     // AJAX — search active/overdue loans for repayment form
     // ----------------------------------------------------------------
     public function loanSearch(): void
@@ -269,6 +389,7 @@ class RepaymentController extends Controller
                     'outstanding_penalty' => $this->model->getOutstandingPenalty((int)$l['id']),
                     'monthly_installment' => (float)($l['monthly_installment'] ?? 0),
                     'weekly_savings_amount' => (float)($l['weekly_savings_amount'] ?? 0),
+                    'repayment_frequency' => $l['repayment_frequency'] ?? 'monthly',
                     'due_date'      => $l['due_date'],
                     'status'        => $l['status'],
                     'loan_type_id'  => (int)($l['loan_type_id'] ?? 1),

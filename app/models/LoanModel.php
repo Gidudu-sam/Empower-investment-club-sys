@@ -1113,6 +1113,26 @@ class LoanModel extends Model
     }
 
     /**
+     * Get the next unpaid installment for a loan (for showing expected payment).
+     */
+    public function getNextUnpaidInstallment(int $loanId): ?array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT * FROM `loan_installments` 
+                 WHERE `loan_id`=? AND `status` IN('pending','overdue','partial')
+                 ORDER BY `installment_no` ASC LIMIT 1"
+            );
+            $stmt->execute([$loanId]);
+            $result = $stmt->fetch();
+            return $result ?: null;
+        } catch (PDOException $e) { 
+            error_log("LoanModel::getNextUnpaidInstallment error: " . $e->getMessage());
+            return null; 
+        }
+    }
+
+    /**
      * Update installments when a repayment is made.
      */
     public function updateInstallmentsOnPayment(int $loanId, float $amountPaid): void

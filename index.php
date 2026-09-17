@@ -24,6 +24,9 @@ $routes = [
     'login'          => ['AuthController',      'login'],
     'logout'         => ['AuthController',      'logout'],
     'dashboard'      => ['DashboardController', 'index'],
+    'run-cleanup'       => ['CleanupController',   'runCleanup'],    // ONE-TIME USE - DELETE AFTER
+    'recover-accounts'  => ['CleanupController',   'recoverAccounts'], // ONE-TIME USE - DELETE AFTER
+    'system-tests'      => ['SystemTestController', 'runTests'],       // ONE-TIME USE - DELETE AFTER
     'dashboard-deposit-analytics' => ['DashboardController', 'depositAnalyticsData'],
     // Member Portal module (Stage 14-B) -- every action derives its
     // member identity exclusively from Session::requireMember(), never
@@ -303,6 +306,7 @@ $routes = [
     'repayment-receipt'      => ['RepaymentController',  'receipt'],
     'repayment-loan'         => ['RepaymentController',  'loanRepayments'],
     'repayment-report'       => ['RepaymentController',  'report'],
+    'repayment-member-search'=> ['RepaymentController',  'memberSearch'],
     'repayment-loan-search'  => ['RepaymentController',  'loanSearch'],
     'repayment-delete'       => ['RepaymentController',  'delete'],
     // Birthday Email module
