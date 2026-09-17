@@ -1,3 +1,9 @@
+# Environment configuration files with secrets (never commit these)
+.env
+.env.*
+!.env.example
+!.env.production.template
+
 # Composer-managed dependencies — regenerate via `composer install`
 # using the committed composer.lock. Never commit vendor/ itself.
 /vendor/
@@ -40,6 +46,10 @@ composer.phar
 tests/test_stage13f2_import_xss_csrf.php
 tests/test_stage13f3_financial_immutability.php
 tests/test_stage13f_auth_d02_self_reversal.php
+
+# Secret files (development credentials stored outside repository)
+*secrets*
+*_credentials.php
 
 # OS artifacts
 Thumbs.db
