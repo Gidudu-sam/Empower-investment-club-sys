@@ -1,0 +1,18 @@
+{
+    "step3_status": "skipped",
+    "step4_journal": {
+        "entry_id": "9",
+        "entry_number": "JE00035",
+        "debit_line_id": "75",
+        "credit_line_id": "76"
+    },
+    "final_state": {
+        "gl_3010_balance": 56455620,
+        "gl_3010_line_count": 5,
+        "gl_3020_balance": "-51485620.00",
+        "orphaned_lines": "0",
+        "share_transactions": "81",
+        "share_total": "51485620.00"
+    },
+    "verification_status": "PASSED"
+}

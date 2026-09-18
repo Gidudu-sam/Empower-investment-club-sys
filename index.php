@@ -174,6 +174,12 @@ $routes = [
     'share-historical-store'  => ['ShareController',      'historicalStore'],
     'share-transaction-create' => ['ShareController',     'currentTransactionCreate'],
     'share-transaction-store'  => ['ShareController',     'currentTransactionStore'],
+    // Share Transfers module — Savings ↔ Shares internal transfers
+    'share-transfers'                => ['ShareTransferController', 'index'],
+    'share-transfer-get-accounts'    => ['ShareTransferController', 'getMemberAccounts'],
+    'share-transfer-savings-to-shares' => ['ShareTransferController', 'savingsToShares'],
+    'share-transfer-shares-to-savings' => ['ShareTransferController', 'sharesToSavings'],
+    'share-transfer-history'         => ['ShareTransferController', 'history'],
     // Settings module (comprehensive)
     'settings'               => ['SettingsController', 'general'],
     'settings-general'       => ['SettingsController', 'general'],

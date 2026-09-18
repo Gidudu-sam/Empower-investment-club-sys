@@ -31,6 +31,11 @@ class Session
             session_regenerate_id(true);
             $_SESSION['_initiated'] = true;
         }
+        
+        // Auto-login via "Remember Me" token if not already logged in
+        if (!isset($_SESSION['user_id'])) {
+            self::attemptAutoLogin();
+        }
     }
 
     /** Store a value in the session */
@@ -252,5 +257,98 @@ class Session
         self::start();
         $userRole = self::get('user_role');
         return in_array($userRole, $allowedRoles, true);
+    }
+    
+    /**
+     * Attempt to auto-login user via "Remember Me" token
+     * Called automatically in start() if user is not already logged in
+     */
+    private static function attemptAutoLogin(): void
+    {
+        // Check if remember_me cookie exists
+        if (!isset($_COOKIE['remember_me']) || empty($_COOKIE['remember_me'])) {
+            return;
+        }
+        
+        try {
+            // Load RememberToken model
+            require_once APP_PATH . '/models/RememberTokenModel.php';
+            require_once APP_PATH . '/models/UserModel.php';
+            
+            $rememberTokenModel = new RememberTokenModel();
+            $userModel = new UserModel();
+            
+            // Validate token and get user ID
+            $userId = $rememberTokenModel->validateToken($_COOKIE['remember_me']);
+            
+            if ($userId === null) {
+                // Invalid/expired token - clear cookie
+                setcookie(
+                    'remember_me',
+                    '',
+                    [
+                        'expires' => time() - 3600,
+                        'path' => '/',
+                        'domain' => '',
+                        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+                        'httponly' => true,
+                        'samesite' => 'Lax'
+                    ]
+                );
+                unset($_COOKIE['remember_me']);
+                return;
+            }
+            
+            // Get user data
+            $user = $userModel->find($userId);
+            
+            if (!$user || !$user['is_active']) {
+                // User not found or deactivated - revoke all tokens
+                if ($user) {
+                    $rememberTokenModel->revokeAllUserTokens($userId);
+                }
+                return;
+            }
+            
+            // Successfully validated - log user in automatically
+            $_SESSION['user_id']     = $user['id'];
+            $_SESSION['user_name']   = $user['full_name'];
+            $_SESSION['user_email']  = $user['email'];
+            $_SESSION['user_role']   = $user['role_name'];
+            $_SESSION['user_avatar'] = $user['avatar'];
+            $_SESSION['last_activity'] = time();
+            $_SESSION['member_id']   = $user['member_id'] !== null ? (int)$user['member_id'] : null;
+            $_SESSION['force_password_change'] = (int)$user['force_password_change'] === 1;
+            $_SESSION['auto_login']  = true; // Flag to indicate this was auto-login
+            
+            // Log activity
+            $userModel->logActivity($userId, 'auto_login', 'User auto-logged in via Remember Me token.');
+            
+            // Optional: Rotate token for enhanced security (Task #6)
+            $parts = explode(':', $_COOKIE['remember_me'], 2);
+            if (count($parts) === 2) {
+                $newToken = $rememberTokenModel->rotateToken($parts[0], $userId);
+                if ($newToken) {
+                    $expiryTimestamp = strtotime($newToken['expires_at']);
+                    setcookie(
+                        'remember_me',
+                        $newToken['cookie_value'],
+                        [
+                            'expires' => $expiryTimestamp,
+                            'path' => '/',
+                            'domain' => '',
+                            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+                            'httponly' => true,
+                            'samesite' => 'Lax'
+                        ]
+                    );
+                }
+            }
+            
+        } catch (Exception $e) {
+            // Silent fail - log error but don't disrupt user experience
+            error_log('Auto-login failed: ' . $e->getMessage());
+            return;
+        }
     }
 }

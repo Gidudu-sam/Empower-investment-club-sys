@@ -130,6 +130,8 @@ class InternalVoucherController extends Controller
                 'contra_account_id'   => $_POST['contra_account_id'] ?? null,
                 'member_id'           => $_POST['member_id'] ?: null,
                 'savings_account_id'  => $_POST['savings_account_id'] ?: null,
+                'share_member_id'     => $_POST['share_member_id'] ?? null,
+                'contra_share_member_id' => $_POST['contra_share_member_id'] ?? null,
                 'narration'           => trim($_POST['narration'] ?? ''),
                 'amount'              => $_POST['amount'] ?? null,
             ], (int)Session::get('user_id'));

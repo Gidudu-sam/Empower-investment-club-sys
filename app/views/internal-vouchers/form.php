@@ -22,6 +22,8 @@ $base = APP_URL . '/index.php';
 
                     <form method="POST" action="<?= $base ?>?page=internal-voucher-store" id="voucherForm">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                        <input type="hidden" name="contra_share_member_id" id="contraVoucherShareMemberId" value="">
+                        <input type="hidden" name="share_member_id" id="voucherShareMemberId" value="">
 
                         <div class="row g-3 mb-3">
                             <div class="col-md-6">
@@ -72,7 +74,7 @@ $base = APP_URL . '/index.php';
                             </select>
                         </div>
 
-                        <div class="mb-3" id="memberSubledgerBlock" style="display:none;">
+                        <div class="mb-3 d-none" id="memberSubledgerBlock">
                             <label class="form-label fw-semibold">
                                 Member / Account <span class="text-muted fw-normal" id="voucherSubledgerAccountLabel"></span>
                             </label>
@@ -84,6 +86,19 @@ $base = APP_URL . '/index.php';
                                 <option value="">Select a member first...</option>
                             </select>
                             <div class="alert alert-secondary py-1 px-2 small mb-0 mt-2" id="voucherAccountBalanceText" style="display:none;"></div>
+                        </div>
+
+                        <div class="mb-3 d-none" id="contraMemberSubledgerBlock">                            <label class="form-label fw-semibold">
+                                Contra Member / Account <span class="text-muted fw-normal" id="contraVoucherSubledgerAccountLabel"></span>
+                            </label>
+                            <input type="text" class="form-control" id="contraVoucherMemberSearch" placeholder="Search by name, member number, or account number..." autocomplete="off">
+                            <input type="hidden" name="contra_member_id" id="contraVoucherMemberId">
+                            <div class="list-group position-absolute" id="contraVoucherMemberResults" style="z-index:1000;display:none;max-height:220px;overflow-y:auto;"></div>
+
+                            <select name="contra_savings_account_id" id="contraVoucherAccountSelect" class="form-select mt-2" disabled onchange="onContraVoucherAccountChange()">
+                                <option value="">Select a member first...</option>
+                            </select>
+                            <div class="alert alert-secondary py-1 px-2 small mb-0 mt-2" id="contraVoucherAccountBalanceText" style="display:none;"></div>
                         </div>
 
                         <div class="mb-3">
@@ -121,6 +136,7 @@ $base = APP_URL . '/index.php';
                                 <i class="bi bi-check-circle me-1"></i> Create Draft
                             </button>
                             <a href="<?= $base ?>?page=internal-vouchers" class="btn btn-secondary">Cancel</a>
+                            <button type="button" class="btn btn-info" onclick="debugFormValues()">Debug Values</button>
                         </div>
                     </form>
                 </div>
@@ -255,6 +271,7 @@ function onCategoryChange() {
 // never be submitted for an account that doesn't need them.
 // ------------------------------------------------------------
 let voucherSelectedAccountBalance = null;
+let contraVoucherSelectedAccountBalance = null;
 
 function checkSubledgerRequirement() {
     const catChosen = document.getElementById('expenseCategory').value !== '';
@@ -265,26 +282,107 @@ function checkSubledgerRequirement() {
 
     const primaryNeeds = !!(primaryOpt && primaryOpt.value && primaryOpt.dataset.requiresSubledger === '1');
     const contraNeeds = !!(contraOpt && contraOpt.value && contraOpt.dataset.requiresSubledger === '1');
+    const isDual = primaryNeeds && contraNeeds;
     const needsSubledger = primaryNeeds || contraNeeds;
-    const activeOpt = primaryNeeds ? primaryOpt : (contraNeeds ? contraOpt : null);
+    
+    // Get subledger types
+    const primaryType = primaryOpt && primaryOpt.dataset.subledgerType ? primaryOpt.dataset.subledgerType : '';
+    const contraType = contraOpt && contraOpt.dataset.subledgerType ? contraOpt.dataset.subledgerType : '';
 
     const block = document.getElementById('memberSubledgerBlock');
+    const contraBlock = document.getElementById('contraMemberSubledgerBlock');
     const label = document.getElementById('voucherSubledgerAccountLabel');
-    block.style.display = needsSubledger ? '' : 'none';
-    label.textContent = activeOpt ? ('for ' + activeOpt.dataset.name) : '';
-    if (!needsSubledger) {
+    const contraLabel = document.getElementById('contraVoucherSubledgerAccountLabel');
+
+    if (isDual) {
+        // DUAL SUBLEDGER: Show both blocks
+        block.classList.remove('d-none');
+        contraBlock.classList.remove('d-none');
+        label.textContent = primaryOpt ? ('for ' + primaryOpt.dataset.name) : '';
+        contraLabel.textContent = contraOpt ? ('for ' + contraOpt.dataset.name) : '';
+        
+        // For PRIMARY side: hide account dropdown if shares
+        const primaryAccountSelect = document.getElementById('voucherAccountSelect');
+        if (primaryType === 'shares') {
+            primaryAccountSelect.style.display = 'none'; // Hide the select itself
+            document.getElementById('voucherAccountBalanceText').style.display = 'none'; // Hide balance text
+            primaryAccountSelect.required = false;
+        } else {
+            primaryAccountSelect.style.display = '';
+            document.getElementById('voucherAccountBalanceText').style.display = '';
+            primaryAccountSelect.required = true;
+        }
+        
+        // For CONTRA side: hide account dropdown if shares
+        const contraAccountSelect = document.getElementById('contraVoucherAccountSelect');
+        if (contraType === 'shares') {
+            contraAccountSelect.style.display = 'none';
+            document.getElementById('contraVoucherAccountBalanceText').style.display = 'none';
+            contraAccountSelect.required = false;
+        } else {
+            contraAccountSelect.style.display = '';
+            document.getElementById('contraVoucherAccountBalanceText').style.display = '';
+            contraAccountSelect.required = true;
+        }
+        
+        document.getElementById('voucherMemberSearch').required = true;
+        document.getElementById('contraVoucherMemberSearch').required = true;
+    } else if (needsSubledger) {
+        // SINGLE SUBLEDGER: Show only primary block
+        const activeOpt = primaryNeeds ? primaryOpt : (contraNeeds ? contraOpt : null);
+        const activeType = primaryNeeds ? primaryType : contraType;
+        
+        block.classList.remove('d-none');
+        contraBlock.classList.add('d-none');
+        label.textContent = activeOpt ? ('for ' + activeOpt.dataset.name) : '';
+        
+        // Hide account dropdown if shares
+        const accountSelect = document.getElementById('voucherAccountSelect');
+        if (activeType === 'shares') {
+            accountSelect.style.display = 'none';
+            document.getElementById('voucherAccountBalanceText').style.display = 'none';
+            accountSelect.required = false;
+        } else {
+            accountSelect.style.display = '';
+            document.getElementById('voucherAccountBalanceText').style.display = '';
+            accountSelect.required = true;
+        }
+        
+        document.getElementById('voucherMemberSearch').required = true;
+        
+        // Clear contra block when hidden
+        document.getElementById('contraVoucherMemberSearch').value = '';
+        document.getElementById('contraVoucherMemberId').value = '';
+        document.getElementById('contraVoucherMemberResults').style.display = 'none';
+        resetContraVoucherAccountSelect();
+        document.getElementById('contraVoucherMemberSearch').required = false;
+        document.getElementById('contraVoucherAccountSelect').required = false;
+    } else {
+        // NO SUBLEDGER: Hide both blocks
+        block.classList.add('d-none');
+        contraBlock.classList.add('d-none');
+        label.textContent = '';
+        // Clear primary block
         document.getElementById('voucherMemberSearch').value = '';
         document.getElementById('voucherMemberId').value = '';
         document.getElementById('voucherMemberResults').style.display = 'none';
         resetVoucherAccountSelect();
+        document.getElementById('voucherMemberSearch').required = false;
+        document.getElementById('voucherAccountSelect').required = false;
+        // Clear contra block
+        document.getElementById('contraVoucherMemberSearch').value = '';
+        document.getElementById('contraVoucherMemberId').value = '';
+        document.getElementById('contraVoucherMemberResults').style.display = 'none';
+        resetContraVoucherAccountSelect();
+        document.getElementById('contraVoucherMemberSearch').required = false;
+        document.getElementById('contraVoucherAccountSelect').required = false;
     }
-    document.getElementById('voucherMemberSearch').required = needsSubledger;
-    document.getElementById('voucherAccountSelect').required = needsSubledger;
     updatePreview();
 }
 
 document.getElementById('voucherMemberSearch').addEventListener('input', function () {
     document.getElementById('voucherMemberId').value = '';
+    document.getElementById('voucherShareMemberId').value = '';
     resetVoucherAccountSelect();
     clearTimeout(window.__voucherMemberTimer);
     const q = this.value.trim();
@@ -306,8 +404,26 @@ document.getElementById('voucherMemberSearch').addEventListener('input', functio
                         e.preventDefault();
                         document.getElementById('voucherMemberSearch').value = m.full_name + ' (' + m.member_number + ')';
                         document.getElementById('voucherMemberId').value = m.id;
+                        document.getElementById('voucherShareMemberId').value = m.id; // Also set for shares
                         results.style.display = 'none';
-                        loadVoucherAccounts(m.id);
+                        
+                        // Only load accounts if subledger type is NOT shares
+                        const primarySel = document.getElementById('primaryAccount');
+                        const contraSel = document.getElementById('contraAccount');
+                        const primaryOpt = primarySel.options[primarySel.selectedIndex];
+                        const contraOpt = contraSel.options[contraSel.selectedIndex];
+                        const primaryNeeds = !!(primaryOpt && primaryOpt.value && primaryOpt.dataset.requiresSubledger === '1');
+                        const contraNeeds = !!(contraOpt && contraOpt.value && contraOpt.dataset.requiresSubledger === '1');
+                        const primaryType = primaryOpt && primaryOpt.dataset.subledgerType ? primaryOpt.dataset.subledgerType : '';
+                        const contraType = contraOpt && contraOpt.dataset.subledgerType ? contraOpt.dataset.subledgerType : '';
+                        
+                        // Determine which type applies to PRIMARY block
+                        const activeType = primaryNeeds ? primaryType : (contraNeeds ? contraType : '');
+                        
+                        // Only load accounts if NOT shares
+                        if (activeType !== 'shares') {
+                            loadVoucherAccounts(m.id);
+                        }
                     };
                     results.appendChild(item);
                 });
@@ -320,12 +436,72 @@ document.addEventListener('click', function (e) {
     if (!input.contains(e.target) && !results.contains(e.target)) results.style.display = 'none';
 });
 
+// CONTRA MEMBER SEARCH (duplicate of primary member search for contra side)
+document.getElementById('contraVoucherMemberSearch').addEventListener('input', function () {
+    document.getElementById('contraVoucherMemberId').value = '';
+    document.getElementById('contraVoucherShareMemberId').value = '';
+    resetContraVoucherAccountSelect();
+    clearTimeout(window.__contraVoucherMemberTimer);
+    const q = this.value.trim();
+    const results = document.getElementById('contraVoucherMemberResults');
+    if (q.length < 2) { results.style.display = 'none'; return; }
+    window.__contraVoucherMemberTimer = setTimeout(() => {
+        fetch('<?= $base ?>?page=internal-voucher-member-search&q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => {
+                results.innerHTML = '';
+                if (!data.members || !data.members.length) { results.style.display = 'none'; return; }
+                data.members.forEach(m => {
+                    const item = document.createElement('a');
+                    item.href = '#';
+                    item.className = 'list-group-item list-group-item-action';
+                    item.style.fontSize = '.82rem';
+                    item.textContent = m.full_name + ' (' + m.member_number + ') — ' + m.phone;
+                    item.onclick = (e) => {
+                        e.preventDefault();
+                        document.getElementById('contraVoucherMemberSearch').value = m.full_name + ' (' + m.member_number + ')';
+                        document.getElementById('contraVoucherMemberId').value = m.id;
+                        document.getElementById('contraVoucherShareMemberId').value = m.id; // Also set for shares
+                        results.style.display = 'none';
+                        
+                        // Only load accounts if subledger type is NOT shares
+                        const contraSel = document.getElementById('contraAccount');
+                        const contraOpt = contraSel.options[contraSel.selectedIndex];
+                        const contraType = contraOpt && contraOpt.dataset.subledgerType ? contraOpt.dataset.subledgerType : '';
+                        
+                        // Only load accounts if NOT shares
+                        if (contraType !== 'shares') {
+                            loadContraVoucherAccounts(m.id);
+                        }
+                    };
+                    results.appendChild(item);
+                });
+                results.style.display = '';
+            });
+    }, 250);
+});
+document.addEventListener('click', function (e) {
+    const input = document.getElementById('contraVoucherMemberSearch'), results = document.getElementById('contraVoucherMemberResults');
+    if (!input.contains(e.target) && !results.contains(e.target)) results.style.display = 'none';
+});
+
 function resetVoucherAccountSelect() {
     const sel = document.getElementById('voucherAccountSelect');
     sel.innerHTML = '<option value="">Select a member first...</option>';
     sel.disabled = true;
     voucherSelectedAccountBalance = null;
     const balanceEl = document.getElementById('voucherAccountBalanceText');
+    balanceEl.textContent = '';
+    balanceEl.style.display = 'none';
+    updatePreview();
+}
+
+function resetContraVoucherAccountSelect() {
+    const sel = document.getElementById('contraVoucherAccountSelect');
+    sel.innerHTML = '<option value="">Select a member first...</option>';
+    sel.disabled = true;
+    contraVoucherSelectedAccountBalance = null;
+    const balanceEl = document.getElementById('contraVoucherAccountBalanceText');
     balanceEl.textContent = '';
     balanceEl.style.display = 'none';
     updatePreview();
@@ -354,6 +530,29 @@ function loadVoucherAccounts(memberId) {
         });
 }
 
+function loadContraVoucherAccounts(memberId) {
+    fetch('<?= $base ?>?page=internal-voucher-member-accounts&member_id=' + memberId)
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.getElementById('contraVoucherAccountSelect');
+            sel.innerHTML = '';
+            if (!data.accounts || !data.accounts.length) {
+                sel.innerHTML = '<option value="">This member has no eligible accounts</option>';
+                sel.disabled = true;
+                return;
+            }
+            sel.innerHTML = '<option value="">Select account...</option>';
+            data.accounts.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.dataset.balance = a.balance;
+                opt.textContent = a.account_type + ' — ' + a.account_number + ' (Shs ' + Number(a.balance).toLocaleString(undefined, {minimumFractionDigits: 2}) + ')';
+                sel.appendChild(opt);
+            });
+            sel.disabled = false;
+        });
+}
+
 function onVoucherAccountChange() {
     const sel = document.getElementById('voucherAccountSelect');
     const opt = sel.options[sel.selectedIndex];
@@ -361,6 +560,21 @@ function onVoucherAccountChange() {
     const balanceEl = document.getElementById('voucherAccountBalanceText');
     if (voucherSelectedAccountBalance !== null) {
         balanceEl.innerHTML = 'Current Balance: <strong>Shs ' + voucherSelectedAccountBalance.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</strong>';
+        balanceEl.style.display = '';
+    } else {
+        balanceEl.textContent = '';
+        balanceEl.style.display = 'none';
+    }
+    updatePreview();
+}
+
+function onContraVoucherAccountChange() {
+    const sel = document.getElementById('contraVoucherAccountSelect');
+    const opt = sel.options[sel.selectedIndex];
+    contraVoucherSelectedAccountBalance = opt && opt.dataset.balance !== undefined ? parseFloat(opt.dataset.balance) : null;
+    const balanceEl = document.getElementById('contraVoucherAccountBalanceText');
+    if (contraVoucherSelectedAccountBalance !== null) {
+        balanceEl.innerHTML = 'Current Balance: <strong>Shs ' + contraVoucherSelectedAccountBalance.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</strong>';
         balanceEl.style.display = '';
     } else {
         balanceEl.textContent = '';
@@ -423,4 +637,26 @@ function updatePreview() {
 makeSearchableSelect('primaryAccount');
 makeSearchableSelect('contraAccount');
 updateType();
+
+function debugFormValues() {
+    const info = {
+        'Primary Account Requires Subledger': document.getElementById('primaryAccount').selectedOptions[0]?.dataset.requiresSubledger,
+        'Primary Subledger Type': document.getElementById('primaryAccount').selectedOptions[0]?.dataset.subledgerType,
+        'Contra Account Requires Subledger': document.getElementById('contraAccount').selectedOptions[0]?.dataset.requiresSubledger,
+        'Contra Subledger Type': document.getElementById('contraAccount').selectedOptions[0]?.dataset.subledgerType,
+        'Contra Block Display': document.getElementById('contraMemberSubledgerBlock').style.display,
+        'member_id': document.getElementById('voucherMemberId').value,
+        'share_member_id': document.getElementById('voucherShareMemberId').value,
+        'contra_member_id': document.getElementById('contraVoucherMemberId').value,
+        'contra_share_member_id': document.getElementById('contraVoucherShareMemberId').value,
+        'savings_account_id': document.getElementById('voucherAccountSelect').value,
+        'contra_savings_account_id': document.getElementById('contraVoucherAccountSelect').value
+    };
+    
+    let msg = 'FORM DEBUG INFO:\n\n';
+    for (let key in info) {
+        msg += key + ': ' + (info[key] || '(empty)') + '\n';
+    }
+    alert(msg);
+}
 </script>

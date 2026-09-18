@@ -1,6 +1,7 @@
 <?php
 require_once CORE_PATH . '/Controller.php';
 require_once APP_PATH  . '/models/UserModel.php';
+require_once APP_PATH  . '/models/RememberTokenModel.php';
 
 /**
  * Auth Controller — handles login and logout.
@@ -8,10 +9,12 @@ require_once APP_PATH  . '/models/UserModel.php';
 class AuthController extends Controller
 {
     private UserModel $userModel;
+    private RememberTokenModel $rememberTokenModel;
 
     public function __construct()
     {
         $this->userModel = new UserModel();
+        $this->rememberTokenModel = new RememberTokenModel();
     }
 
     /** GET / POST — Login page */
@@ -40,6 +43,7 @@ class AuthController extends Controller
     {
         $email    = $this->sanitize($_POST['email']    ?? '');
         $password = $_POST['password'] ?? '';
+        $remember = isset($_POST['remember']) && $_POST['remember'] === 'on';
 
         // Basic validation
         if (empty($email) || empty($password)) {
@@ -85,6 +89,14 @@ class AuthController extends Controller
         Session::set('member_id', $user['member_id'] !== null ? (int)$user['member_id'] : null);
         Session::set('force_password_change', (int)$user['force_password_change'] === 1);
 
+        // Handle "Remember Me" functionality
+        if ($remember) {
+            $this->createRememberMeCookie($user['id']);
+        } else {
+            // If user unchecked "remember me", clear any existing cookie
+            $this->clearRememberMeCookie();
+        }
+
         // Update last login timestamp and log the activity
         $this->userModel->touchLastLogin($user['id']);
         $this->userModel->logActivity($user['id'], 'login', 'User logged in successfully.');
@@ -99,6 +111,63 @@ class AuthController extends Controller
 
         $this->redirect(APP_URL . '/index.php?page=dashboard');
     }
+    
+    /**
+     * Create a persistent "Remember Me" cookie
+     * 
+     * @param int $userId The user ID to remember
+     */
+    private function createRememberMeCookie(int $userId): void
+    {
+        // Generate secure token
+        $tokenData = $this->rememberTokenModel->createToken($userId);
+        
+        // Set cookie for 90 days
+        $expiryTimestamp = strtotime($tokenData['expires_at']);
+        
+        setcookie(
+            'remember_me',
+            $tokenData['cookie_value'],
+            [
+                'expires' => $expiryTimestamp,
+                'path' => '/',
+                'domain' => '', // Current domain
+                'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on', // HTTPS only in production
+                'httponly' => true, // Prevent JavaScript access (XSS protection)
+                'samesite' => 'Lax' // CSRF protection
+            ]
+        );
+    }
+    
+    /**
+     * Clear the "Remember Me" cookie
+     */
+    private function clearRememberMeCookie(): void
+    {
+        if (isset($_COOKIE['remember_me'])) {
+            // Get selector from cookie to revoke token from database
+            $parts = explode(':', $_COOKIE['remember_me'], 2);
+            if (count($parts) === 2) {
+                $this->rememberTokenModel->revokeBySelector($parts[0]);
+            }
+            
+            // Clear cookie
+            setcookie(
+                'remember_me',
+                '',
+                [
+                    'expires' => time() - 3600,
+                    'path' => '/',
+                    'domain' => '',
+                    'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+                    'httponly' => true,
+                    'samesite' => 'Lax'
+                ]
+            );
+            
+            unset($_COOKIE['remember_me']);
+        }
+    }
 
     /** GET — Logout */
     public function logout(): void
@@ -106,7 +175,13 @@ class AuthController extends Controller
         $userId = Session::get('user_id');
         if ($userId) {
             $this->userModel->logActivity($userId, 'logout', 'User logged out.');
+            
+            // Revoke all remember me tokens for this user for security
+            $this->rememberTokenModel->revokeAllUserTokens($userId);
         }
+        
+        // Clear remember me cookie
+        $this->clearRememberMeCookie();
 
         Session::destroy();
         $this->redirect(APP_URL . '/index.php?page=login');

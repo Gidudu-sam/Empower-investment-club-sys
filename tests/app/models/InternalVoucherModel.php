@@ -36,10 +36,18 @@ class InternalVoucherModel extends Model
     protected string $table      = 'internal_vouchers';
     protected string $primaryKey = 'id';
 
-    /** Subledger types this model knows how to dual-write for. Savings only, this phase. */
-    private const SUPPORTED_SUBLEDGER_TYPES = ['savings'];
+    /** Subledger types this model knows how to dual-write for. Savings and Shares. */
+    private const SUPPORTED_SUBLEDGER_TYPES = ['savings', 'shares'];
 
     private AccountModel $accountModel;
+
+    /**
+     * Get the current share value from settings.
+     */
+    private function getShareValue(): float
+    {
+        return (float)(new SettingsModel())->get('share_value', '20000');
+    }
 
     public function __construct()
     {
@@ -59,10 +67,8 @@ class InternalVoucherModel extends Model
      * credit ROLE for this specific voucher — i.e. whichever of Dr
      * primary/Cr contra (debit voucher) or Dr contra/Cr primary (credit
      * voucher) actually lands on the flagged account. Returns null when
-     * neither account requires one (the normal, unaffected case for every
-     * account except id=17 this phase). Throws if both do — not a real
-     * chart-of-accounts scenario today, but rejected explicitly rather than
-     * silently picking one.
+     * neither account requires one. Returns array with 'dual'=>true when
+     * BOTH accounts require subledgers (Member-to-Member savings transfers).
      */
     private function resolveSubledgerSide(array $primaryAccount, array $contraAccount, string $voucherType): ?array
     {
@@ -70,7 +76,21 @@ class InternalVoucherModel extends Model
         $contraRequires  = $this->accountRequiresSubledger($contraAccount);
 
         if ($primaryRequires && $contraRequires) {
-            throw new InvalidArgumentException('Both the debit and credit accounts require a member subledger — this combination is not supported.');
+            // DUAL SUBLEDGER case: Both sides need member+savings account (e.g., Member A → Member B)
+            $isDebitVoucher = $voucherType === 'debit';
+            return [
+                'dual' => true,
+                'primary' => [
+                    'account' => $primaryAccount,
+                    'role' => $isDebitVoucher ? 'debit' : 'credit',
+                    'subledger_type' => $primaryAccount['subledger_type'] ?? null,
+                ],
+                'contra' => [
+                    'account' => $contraAccount,
+                    'role' => $isDebitVoucher ? 'credit' : 'debit',
+                    'subledger_type' => $contraAccount['subledger_type'] ?? null,
+                ],
+            ];
         }
         if (!$primaryRequires && !$contraRequires) {
             return null;
@@ -79,10 +99,79 @@ class InternalVoucherModel extends Model
         $isDebitVoucher = $voucherType === 'debit';
         if ($primaryRequires) {
             // Debit Voucher: Dr primary. Credit Voucher: Cr primary.
-            return ['account' => $primaryAccount, 'role' => $isDebitVoucher ? 'debit' : 'credit'];
+            return ['account' => $primaryAccount, 'role' => $isDebitVoucher ? 'debit' : 'credit', 'subledger_type' => $primaryAccount['subledger_type'] ?? null];
         }
         // contraRequires: Debit Voucher: Cr contra. Credit Voucher: Dr contra.
-        return ['account' => $contraAccount, 'role' => $isDebitVoucher ? 'credit' : 'debit'];
+        return ['account' => $contraAccount, 'role' => $isDebitVoucher ? 'credit' : 'debit', 'subledger_type' => $contraAccount['subledger_type'] ?? null];
+    }
+
+    /**
+     * Validate and extract savings subledger data (member + savings account).
+     * Returns array with member_id, savings_account_id, and current_balance.
+     */
+    private function validateSavingsSubledger(array $data, string $role, bool $isPrimary, string $label): array
+    {
+        $memberIdKey = $isPrimary ? 'member_id' : 'contra_member_id';
+        $savingsAccountIdKey = $isPrimary ? 'savings_account_id' : 'contra_savings_account_id';
+        
+        $memberId = (int)($data[$memberIdKey] ?? 0);
+        if ($memberId < 1 || !(new MemberModel())->find($memberId)) {
+            throw new InvalidArgumentException("Select a valid member for the $label savings account.");
+        }
+
+        $savingsAccountId = (int)($data[$savingsAccountIdKey] ?? 0);
+        $memberAccountModel = new MemberSavingsAccountModel();
+        $memberAccount = $memberAccountModel->getAccount($savingsAccountId);
+        if (!$memberAccount) {
+            throw new InvalidArgumentException("Select a valid member savings account for the $label side.");
+        }
+        if ($memberAccount['account_type'] === 'corporate') {
+            throw new InvalidArgumentException('Corporate savings accounts are not supported by this workflow.');
+        }
+        if ($memberAccount['status'] !== 'active') {
+            throw new InvalidArgumentException("The $label member savings account is not active.");
+        }
+        
+        $holderIds = array_map(
+            fn($h) => (int)$h['member_id'],
+            array_filter((new SavingsAccountHolderModel())->getAccountHolders($savingsAccountId), fn($h) => !empty($h['member_id']))
+        );
+        if (!in_array($memberId, $holderIds, true)) {
+            throw new InvalidArgumentException("The $label savings account does not belong to the selected member.");
+        }
+
+        $currentBalance = $memberAccountModel->getAccountBalance($savingsAccountId);
+        
+        return [
+            'member_id' => $memberId,
+            'savings_account_id' => $savingsAccountId,
+            'current_balance' => $currentBalance
+        ];
+    }
+
+    /**
+     * Validate and extract shares subledger data (member only, no account needed).
+     * Returns array with share_member_id and current_quantity.
+     */
+    private function validateSharesSubledger(array $data, string $role, bool $isPrimary, string $label, float $shareValue): array
+    {
+        $shareMemberIdKey = $isPrimary ? 'share_member_id' : 'contra_share_member_id';
+        
+        $shareMemberId = (int)($data[$shareMemberIdKey] ?? 0);
+        if ($shareMemberId < 1 || !(new MemberModel())->find($shareMemberId)) {
+            // Include debug info in the error message
+            $debug = "DEBUG: Looking for key='$shareMemberIdKey', found value='$shareMemberId', isPrimary=" . ($isPrimary ? 'true' : 'false') . ", available keys=" . implode(',', array_keys($data));
+            throw new InvalidArgumentException("Select a valid member for the $label shares account. [$debug]");
+        }
+
+        // Get current share quantity for this member
+        $shareModel = new ShareModel();
+        $currentQuantity = $shareModel->memberQuantity($shareMemberId, $shareValue);
+        
+        return [
+            'share_member_id' => $shareMemberId,
+            'current_quantity' => $currentQuantity
+        ];
     }
 
     public function update(int $id, array $data): bool
@@ -233,56 +322,118 @@ class InternalVoucherModel extends Model
         }
 
         // Member subledger validation — savings only, this phase. Gated
-        // entirely on whichever of primary/contra is flagged
-        // requires_subledger (never both): for every other account (Cash,
-        // Bank, expenses, Loans, Shares, etc.) none of this runs and
-        // member_id/savings_account_id stay null regardless of what the
-        // client sends.
+        // Member subledger validation — savings AND shares supported.
+        // For savings: validates member_id + savings_account_id
+        // For shares: validates share_member_id (no account needed)
+        // Both support single-sided and dual (cross-member) scenarios.
         $memberId = null;
         $savingsAccountId = null;
+        $contraMemberId = null;
+        $contraSavingsAccountId = null;
+        $shareMemberId = null;
+        $contraShareMemberId = null;
 
         $subledger = $this->resolveSubledgerSide($primaryAccount, $contraAccount, $data['voucher_type']);
         if ($subledger !== null) {
-            $subledgerAccount = $subledger['account'];
-            $subledgerType = $subledgerAccount['subledger_type'];
-            if (!in_array($subledgerType, self::SUPPORTED_SUBLEDGER_TYPES, true)) {
-                throw new RuntimeException("Account \"{$subledgerAccount['name']}\" is flagged requires_subledger but has an unsupported subledger_type \"{$subledgerType}\".");
-            }
+            $isDual = !empty($subledger['dual']);
+            $shareValue = $this->getShareValue();
 
-            $memberId = (int)($data['member_id'] ?? 0);
-            if ($memberId < 1 || !(new MemberModel())->find($memberId)) {
-                throw new InvalidArgumentException('Select a valid member for this account.');
-            }
+            if ($isDual) {
+                // DUAL SUBLEDGER: Both sides need member tracking
+                $primaryType = $subledger['primary']['account']['subledger_type'];
+                $contraType = $subledger['contra']['account']['subledger_type'];
+                
+                // Validate PRIMARY side
+                if (!in_array($primaryType, self::SUPPORTED_SUBLEDGER_TYPES, true)) {
+                    throw new RuntimeException("Primary account has unsupported subledger_type \"{$primaryType}\".");
+                }
+                
+                if ($primaryType === 'savings') {
+                    $primaryData = $this->validateSavingsSubledger($data, $subledger['primary']['role'], true, 'primary');
+                    $memberId = $primaryData['member_id'];
+                    $savingsAccountId = $primaryData['savings_account_id'];
+                    
+                    // Internal vouchers can take accounts below zero (e.g., year-end transfers from Compulsory)
+                    // No balance check here - just validate the account exists and is active
+                } elseif ($primaryType === 'shares') {
+                    $primaryData = $this->validateSharesSubledger($data, $subledger['primary']['role'], true, 'primary', $shareValue);
+                    $shareMemberId = $primaryData['share_member_id'];
+                    
+                    if ($subledger['primary']['role'] === 'debit') {
+                        $requiredQuantity = $shareValue > 0 ? ((float)$data['amount'] / $shareValue) : 0;
+                        if ($requiredQuantity > $primaryData['current_quantity'] + 0.0001) {
+                            throw new InvalidArgumentException(sprintf(
+                                'Debit of Shs %s requires %.4f shares but member only has %.4f shares.',
+                                number_format((float)$data['amount'], 2), $requiredQuantity, $primaryData['current_quantity']
+                            ));
+                        }
+                    }
+                }
+                
+                // Validate CONTRA side
+                if (!in_array($contraType, self::SUPPORTED_SUBLEDGER_TYPES, true)) {
+                    throw new RuntimeException("Contra account has unsupported subledger_type \"{$contraType}\".");
+                }
+                
+                if ($contraType === 'savings') {
+                    $contraData = $this->validateSavingsSubledger($data, $subledger['contra']['role'], false, 'contra');
+                    $contraMemberId = $contraData['member_id'];
+                    $contraSavingsAccountId = $contraData['savings_account_id'];
+                    
+                    // Internal vouchers can take accounts below zero (e.g., year-end transfers from Compulsory)
+                    // No balance check here - just validate the account exists and is active
+                } elseif ($contraType === 'shares') {
+                    $contraData = $this->validateSharesSubledger($data, $subledger['contra']['role'], false, 'contra', $shareValue);
+                    $contraShareMemberId = $contraData['share_member_id'];
+                    
+                    if ($subledger['contra']['role'] === 'debit') {
+                        $requiredQuantity = $shareValue > 0 ? ((float)$data['amount'] / $shareValue) : 0;
+                        if ($requiredQuantity > $contraData['current_quantity'] + 0.0001) {
+                            throw new InvalidArgumentException(sprintf(
+                                'Debit of Shs %s requires %.4f shares but contra member only has %.4f shares.',
+                                number_format((float)$data['amount'], 2), $requiredQuantity, $contraData['current_quantity']
+                            ));
+                        }
+                    }
+                }
+                
+                // Prevent identical source/destination
+                if ($primaryType === $contraType) {
+                    if ($primaryType === 'savings' && $memberId === $contraMemberId && $savingsAccountId === $contraSavingsAccountId) {
+                        throw new InvalidArgumentException('Cannot transfer from and to the same member savings account.');
+                    }
+                    if ($primaryType === 'shares' && $shareMemberId === $contraShareMemberId) {
+                        throw new InvalidArgumentException('Cannot transfer shares to the same member.');
+                    }
+                }
 
-            $savingsAccountId = (int)($data['savings_account_id'] ?? 0);
-            $memberAccountModel = new MemberSavingsAccountModel();
-            $memberAccount = $memberAccountModel->getAccount($savingsAccountId);
-            if (!$memberAccount) {
-                throw new InvalidArgumentException('Select a valid member savings account.');
-            }
-            if ($memberAccount['account_type'] === 'corporate') {
-                throw new InvalidArgumentException('Corporate savings accounts are not supported by this workflow.');
-            }
-            if ($memberAccount['status'] !== 'active') {
-                throw new InvalidArgumentException('This member savings account is not active.');
-            }
-            $holderIds = array_map(
-                fn($h) => (int)$h['member_id'],
-                array_filter((new SavingsAccountHolderModel())->getAccountHolders($savingsAccountId), fn($h) => !empty($h['member_id']))
-            );
-            if (!in_array($memberId, $holderIds, true)) {
-                throw new InvalidArgumentException('This savings account does not belong to the selected member.');
-            }
+            } else {
+                // SINGLE SUBLEDGER: Only one side requires member tracking
+                $subledgerType = $subledger['account']['subledger_type'];
+                if (!in_array($subledgerType, self::SUPPORTED_SUBLEDGER_TYPES, true)) {
+                    throw new RuntimeException("Account has unsupported subledger_type \"{$subledgerType}\".");
+                }
 
-            // A debit ROLE (not necessarily a "debit voucher" — depends on
-            // which side the flagged account is on) decreases the member's balance.
-            if ($subledger['role'] === 'debit') {
-                $currentBalance = $memberAccountModel->getAccountBalance($savingsAccountId);
-                if ((float)$data['amount'] > $currentBalance + 0.01) {
-                    throw new InvalidArgumentException(sprintf(
-                        'Debit of Shs %s would take this member\'s savings account below zero (current balance: Shs %s). Reduce the amount or verify the account.',
-                        number_format((float)$data['amount'], 2), number_format($currentBalance, 2)
-                    ));
+                if ($subledgerType === 'savings') {
+                    $subledgerData = $this->validateSavingsSubledger($data, $subledger['role'], true, 'selected');
+                    $memberId = $subledgerData['member_id'];
+                    $savingsAccountId = $subledgerData['savings_account_id'];
+                    
+                    // Internal vouchers can take accounts below zero (e.g., year-end transfers from Compulsory)
+                    // No balance check here - just validate the account exists and is active
+                } elseif ($subledgerType === 'shares') {
+                    $subledgerData = $this->validateSharesSubledger($data, $subledger['role'], true, 'selected', $shareValue);
+                    $shareMemberId = $subledgerData['share_member_id'];
+                    
+                    if ($subledger['role'] === 'debit') {
+                        $requiredQuantity = $shareValue > 0 ? ((float)$data['amount'] / $shareValue) : 0;
+                        if ($requiredQuantity > $subledgerData['current_quantity'] + 0.0001) {
+                            throw new InvalidArgumentException(sprintf(
+                                'Debit of Shs %s requires %.4f shares but member only has %.4f shares.',
+                                number_format((float)$data['amount'], 2), $requiredQuantity, $subledgerData['current_quantity']
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -295,18 +446,22 @@ class InternalVoucherModel extends Model
             $voucherNumber = $this->nextVoucherNumber();
 
             $id = $this->create([
-                'voucher_number'      => $voucherNumber,
-                'voucher_type'        => $data['voucher_type'],
-                'voucher_date'        => $data['voucher_date'],
-                'primary_account_id'  => $primaryAccountId,
-                'contra_account_id'   => $data['contra_account_id'],
-                'member_id'           => $memberId,
-                'savings_account_id'  => $savingsAccountId,
-                'expense_category_id' => $expenseCategoryId,
-                'narration'           => trim($data['narration']),
-                'amount'              => $data['amount'],
-                'status'              => 'draft',
-                'recorded_by'         => $userId,
+                'voucher_number'           => $voucherNumber,
+                'voucher_type'             => $data['voucher_type'],
+                'voucher_date'             => $data['voucher_date'],
+                'primary_account_id'       => $primaryAccountId,
+                'contra_account_id'        => $data['contra_account_id'],
+                'member_id'                => $memberId,
+                'savings_account_id'       => $savingsAccountId,
+                'contra_member_id'         => $contraMemberId,
+                'contra_savings_account_id'=> $contraSavingsAccountId,
+                'share_member_id'          => $shareMemberId,
+                'contra_share_member_id'   => $contraShareMemberId,
+                'expense_category_id'      => $expenseCategoryId,
+                'narration'                => trim($data['narration']),
+                'amount'                   => $data['amount'],
+                'status'                   => 'draft',
+                'recorded_by'              => $userId,
             ]);
             if ($id === false) {
                 throw new RuntimeException('Failed to create internal voucher.');
@@ -443,9 +598,21 @@ class InternalVoucherModel extends Model
             $je = $this->db->prepare("SELECT entry_number FROM journal_entries WHERE id = ?");
             $je->execute([$voucher['journal_entry_id']]);
             return [
-                'journal_entry_id' => (int)$voucher['journal_entry_id'], 'entry_number' => $je->fetchColumn(), 'created' => false,
-                'savings_id' => $voucher['savings_id'] !== null ? (int)$voucher['savings_id'] : null,
-                'balance_before' => $voucher['balance_before'], 'balance_after' => $voucher['balance_after'],
+                'journal_entry_id'       => (int)$voucher['journal_entry_id'],
+                'entry_number'           => $je->fetchColumn(),
+                'created'                => false,
+                'savings_id'             => $voucher['savings_id'] !== null ? (int)$voucher['savings_id'] : null,
+                'balance_before'         => $voucher['balance_before'],
+                'balance_after'          => $voucher['balance_after'],
+                'contra_savings_id'      => $voucher['contra_savings_id'] ?? null,
+                'contra_balance_before'  => $voucher['contra_balance_before'] ?? null,
+                'contra_balance_after'   => $voucher['contra_balance_after'] ?? null,
+                'share_transaction_id'       => $voucher['share_transaction_id'] ?? null,
+                'share_quantity_before'      => $voucher['share_quantity_before'] ?? null,
+                'share_quantity_after'       => $voucher['share_quantity_after'] ?? null,
+                'contra_share_transaction_id'     => $voucher['contra_share_transaction_id'] ?? null,
+                'contra_share_quantity_before'    => $voucher['contra_share_quantity_before'] ?? null,
+                'contra_share_quantity_after'     => $voucher['contra_share_quantity_after'] ?? null,
             ];
         }
         if ($voucher['status'] !== 'approved') {
@@ -464,33 +631,124 @@ class InternalVoucherModel extends Model
         $amount = (float)$voucher['amount'];
         $isDebit = $voucher['voucher_type'] === 'debit';
 
-        // Member subledger re-validation — savings only, this phase. Time
-        // has passed since createDraft(), so status/balance are re-checked
+        // Member subledger re-validation — savings and shares. Time
+        // has passed since createDraft(), so status/balance/quantity are re-checked
         // fresh; ownership is not re-checked (cannot drift post-creation).
         // The GL $lines below are always built from voucher_type/primary/
-        // contra as before — only the savings-row direction depends on
+        // contra as before — only the subsidiary ledger row direction depends on
         // which side (if either) is flagged, via the resolved role.
         $subledger = $this->resolveSubledgerSide($primaryAccount, $contraAccount, $voucher['voucher_type']);
         $requiresSubledger = $subledger !== null;
-        $subledgerRoleIsDebit = $requiresSubledger && $subledger['role'] === 'debit';
+        $isDual = $requiresSubledger && !empty($subledger['dual']);
+        
+        $subledgerRoleIsDebit = false;
         $savingsId = null;
         $balanceBefore = null;
         $balanceAfter = null;
+        $contraSavingsId = null;
+        $contraBalanceBefore = null;
+        $contraBalanceAfter = null;
 
         if ($requiresSubledger) {
+            // Determine subledger type(s)
+            $primarySubledgerType = !empty($subledger['primary']) ? $subledger['primary']['subledger_type'] : $subledger['subledger_type'];
+            $contraSubledgerType = !empty($subledger['contra']) ? $subledger['contra']['subledger_type'] : null;
+            
             $memberAccountModel = new MemberSavingsAccountModel();
-            $memberAccount = $memberAccountModel->getAccount((int)$voucher['savings_account_id']);
-            if (!$memberAccount || $memberAccount['status'] !== 'active') {
-                throw new InvalidArgumentException('The member savings account is no longer active.');
+            $shareModel = new ShareModel();
+
+            if ($isDual) {
+                // DUAL SUBLEDGER: Validate BOTH member accounts
+                $primaryRoleIsDebit = $subledger['primary']['role'] === 'debit';
+                $contraRoleIsDebit = $subledger['contra']['role'] === 'debit';
+
+                // PRIMARY side validation
+                if ($primarySubledgerType === 'shares') {
+                    // Validate shares quantity
+                    $shareValue = $this->getShareValue();
+                    $requiredQuantity = $amount / $shareValue;
+                    $currentQuantity = $shareModel->memberQuantity((int)$voucher['share_member_id'], $shareValue);
+                    if ($primaryRoleIsDebit && $requiredQuantity > $currentQuantity + 0.0001) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Transfer out of %s shares would exceed the primary member\'s current share balance (%.4f shares available).',
+                            number_format($requiredQuantity, 4), $currentQuantity
+                        ));
+                    }
+                } else {
+                    // Validate savings account
+                    $memberAccount = $memberAccountModel->getAccount((int)$voucher['savings_account_id']);
+                    if (!$memberAccount || $memberAccount['status'] !== 'active') {
+                        throw new InvalidArgumentException('The primary member savings account is no longer active.');
+                    }
+                    $balanceBefore = $memberAccountModel->getAccountBalance((int)$voucher['savings_account_id']);
+                    if ($primaryRoleIsDebit && $amount > $balanceBefore + 0.01) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Debit of Shs %s would take the primary member\'s savings account below zero (current balance: Shs %s).',
+                            number_format($amount, 2), number_format($balanceBefore, 2)
+                        ));
+                    }
+                    $balanceAfter = $primaryRoleIsDebit ? $balanceBefore - $amount : $balanceBefore + $amount;
+                }
+
+                // CONTRA side validation
+                if ($contraSubledgerType === 'shares') {
+                    // Validate shares quantity
+                    $shareValue = $this->getShareValue();
+                    $requiredQuantity = $amount / $shareValue;
+                    $currentQuantity = $shareModel->memberQuantity((int)$voucher['contra_share_member_id'], $shareValue);
+                    if ($contraRoleIsDebit && $requiredQuantity > $currentQuantity + 0.0001) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Transfer out of %s shares would exceed the contra member\'s current share balance (%.4f shares available).',
+                            number_format($requiredQuantity, 4), $currentQuantity
+                        ));
+                    }
+                } else {
+                    // Validate savings account
+                    $contraAccount = $memberAccountModel->getAccount((int)$voucher['contra_savings_account_id']);
+                    if (!$contraAccount || $contraAccount['status'] !== 'active') {
+                        throw new InvalidArgumentException('The contra member savings account is no longer active.');
+                    }
+                    $contraBalanceBefore = $memberAccountModel->getAccountBalance((int)$voucher['contra_savings_account_id']);
+                    if ($contraRoleIsDebit && $amount > $contraBalanceBefore + 0.01) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Debit of Shs %s would take the contra member\'s savings account below zero (current balance: Shs %s).',
+                            number_format($amount, 2), number_format($contraBalanceBefore, 2)
+                        ));
+                    }
+                    $contraBalanceAfter = $contraRoleIsDebit ? $contraBalanceBefore - $amount : $contraBalanceBefore + $amount;
+                }
+
+            } else {
+                // SINGLE SUBLEDGER validation
+                $subledgerRoleIsDebit = $subledger['role'] === 'debit';
+                
+                if ($primarySubledgerType === 'shares') {
+                    // Validate shares quantity
+                    $shareValue = $this->getShareValue();
+                    $requiredQuantity = $amount / $shareValue;
+                    $currentQuantity = $shareModel->memberQuantity((int)$voucher['share_member_id'], $shareValue);
+                    if ($subledgerRoleIsDebit && $requiredQuantity > $currentQuantity + 0.0001) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Debit of %s shares would exceed this member\'s current share balance (%.4f shares available). Posting blocked.',
+                            number_format($requiredQuantity, 4), $currentQuantity
+                        ));
+                    }
+                } else {
+                    // Validate savings account
+                    $memberAccount = $memberAccountModel->getAccount((int)$voucher['savings_account_id']);
+                    if (!$memberAccount || $memberAccount['status'] !== 'active') {
+                        throw new InvalidArgumentException('The member savings account is no longer active.');
+                    }
+                    $balanceBefore = $memberAccountModel->getAccountBalance((int)$voucher['savings_account_id']);
+                    if ($subledgerRoleIsDebit && $amount > $balanceBefore + 0.01) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Debit of Shs %s would take this member\'s savings account below zero (current balance: Shs %s). Posting blocked.',
+                            number_format($amount, 2), number_format($balanceBefore, 2)
+                        ));
+                    }
+                    $balanceAfter = $subledgerRoleIsDebit ? $balanceBefore - $amount : $balanceBefore + $amount;
+                }
             }
-            $balanceBefore = $memberAccountModel->getAccountBalance((int)$voucher['savings_account_id']);
-            if ($subledgerRoleIsDebit && $amount > $balanceBefore + 0.01) {
-                throw new InvalidArgumentException(sprintf(
-                    'Debit of Shs %s would take this member\'s savings account below zero (current balance: Shs %s). Posting blocked.',
-                    number_format($amount, 2), number_format($balanceBefore, 2)
-                ));
-            }
-            $balanceAfter = $subledgerRoleIsDebit ? $balanceBefore - $amount : $balanceBefore + $amount;
         }
 
         $lines = $isDebit
@@ -514,21 +772,152 @@ class InternalVoucherModel extends Model
             // Member subsidiary ledger side of the dual-write, written
             // first (mirrors MemberAccountAdjustmentModel::post()'s
             // ordering) — before the GL side, in the same transaction.
+            
+            $shareTransactionId = null;
+            $shareQuantityBefore = null;
+            $shareQuantityAfter = null;
+            $contraShareTransactionId = null;
+            $contraShareQuantityBefore = null;
+            $contraShareQuantityAfter = null;
+            
             if ($requiresSubledger) {
-                $savingsStmt = $this->db->prepare("
-                    INSERT INTO `savings`
-                        (member_id, savings_account_id, receipt_number, transaction_type, debit, credit,
-                         running_balance, description, payment_method, transaction_date, financial_year, notes, recorded_by)
-                    VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, 'Other', ?, ?, ?, ?)
-                ");
-                $savingsStmt->execute([
-                    $voucher['member_id'], $voucher['savings_account_id'], $voucher['voucher_number'],
-                    $subledgerRoleIsDebit ? $amount : 0.00, $subledgerRoleIsDebit ? 0.00 : $amount,
-                    $balanceAfter,
-                    "Internal Voucher {$voucher['voucher_number']} — {$voucher['narration']}",
-                    $voucher['voucher_date'], date('Y', strtotime($voucher['voucher_date'])), $voucher['narration'], $userId,
-                ]);
-                $savingsId = (int)$this->db->lastInsertId();
+                // Determine subledger type(s)
+                $primarySubledgerType = !empty($subledger['primary']) ? $subledger['primary']['subledger_type'] : $subledger['subledger_type'];
+                $contraSubledgerType = !empty($subledger['contra']) ? $subledger['contra']['subledger_type'] : null;
+                
+                if ($isDual) {
+                    // DUAL SUBLEDGER: Write to BOTH members' accounts
+                    
+                    // PRIMARY side
+                    $primaryRoleIsDebit = $subledger['primary']['role'] === 'debit';
+                    
+                    if ($primarySubledgerType === 'shares') {
+                        // PRIMARY: Shares transaction
+                        $shareValue = $this->getShareValue();
+                        $quantity = $amount / $shareValue;
+                        $shareModel = new ShareModel();
+                        $shareQuantityBefore = $shareModel->memberQuantity((int)$voucher['share_member_id'], $shareValue);
+                        $shareQuantityAfter = $primaryRoleIsDebit ? $shareQuantityBefore - $quantity : $shareQuantityBefore + $quantity;
+                        
+                        $transactionType = $primaryRoleIsDebit ? 'transfer_out' : 'transfer_in';
+                        
+                        $shareStmt = $this->db->prepare("
+                            INSERT INTO `share_transactions`
+                                (member_id, transaction_type, transaction_date, quantity, share_value, amount,
+                                 reference_number, source_reference_type, source_reference_id, journal_entry_id, processed_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'internal_voucher', ?, NULL, ?)
+                        ");
+                        $shareStmt->execute([
+                            $voucher['share_member_id'], $transactionType, $voucher['voucher_date'],
+                            $quantity, $shareValue, $amount, $voucher['voucher_number'], $voucherId, $userId
+                        ]);
+                        $shareTransactionId = (int)$this->db->lastInsertId();
+                        
+                    } else {
+                        // PRIMARY: Savings transaction
+                        $savingsStmt = $this->db->prepare("
+                            INSERT INTO `savings`
+                                (member_id, savings_account_id, receipt_number, transaction_type, debit, credit,
+                                 running_balance, description, payment_method, transaction_date, financial_year, notes, recorded_by)
+                            VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, 'Other', ?, ?, ?, ?)
+                        ");
+                        $savingsStmt->execute([
+                            $voucher['member_id'], $voucher['savings_account_id'], $voucher['voucher_number'],
+                            $primaryRoleIsDebit ? $amount : 0.00, $primaryRoleIsDebit ? 0.00 : $amount,
+                            $balanceAfter,
+                            "Transfer via Voucher {$voucher['voucher_number']} — {$voucher['narration']}",
+                            $voucher['voucher_date'], date('Y', strtotime($voucher['voucher_date'])), $voucher['narration'], $userId,
+                        ]);
+                        $savingsId = (int)$this->db->lastInsertId();
+                    }
+
+                    // CONTRA side
+                    $contraRoleIsDebit = $subledger['contra']['role'] === 'debit';
+                    
+                    if ($contraSubledgerType === 'shares') {
+                        // CONTRA: Shares transaction
+                        $shareValue = $this->getShareValue();
+                        $quantity = $amount / $shareValue;
+                        $shareModel = new ShareModel();
+                        $contraShareQuantityBefore = $shareModel->memberQuantity((int)$voucher['contra_share_member_id'], $shareValue);
+                        $contraShareQuantityAfter = $contraRoleIsDebit ? $contraShareQuantityBefore - $quantity : $contraShareQuantityBefore + $quantity;
+                        
+                        $transactionType = $contraRoleIsDebit ? 'transfer_out' : 'transfer_in';
+                        
+                        $contraShareStmt = $this->db->prepare("
+                            INSERT INTO `share_transactions`
+                                (member_id, transaction_type, transaction_date, quantity, share_value, amount,
+                                 reference_number, source_reference_type, source_reference_id, journal_entry_id, processed_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'internal_voucher', ?, NULL, ?)
+                        ");
+                        $contraShareStmt->execute([
+                            $voucher['contra_share_member_id'], $transactionType, $voucher['voucher_date'],
+                            $quantity, $shareValue, $amount, $voucher['voucher_number'], $voucherId, $userId
+                        ]);
+                        $contraShareTransactionId = (int)$this->db->lastInsertId();
+                        
+                    } else {
+                        // CONTRA: Savings transaction
+                        $contraSavingsStmt = $this->db->prepare("
+                            INSERT INTO `savings`
+                                (member_id, savings_account_id, receipt_number, transaction_type, debit, credit,
+                                 running_balance, description, payment_method, transaction_date, financial_year, notes, recorded_by)
+                            VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, 'Other', ?, ?, ?, ?)
+                        ");
+                        $contraSavingsStmt->execute([
+                            $voucher['contra_member_id'], $voucher['contra_savings_account_id'], $voucher['voucher_number'],
+                            $contraRoleIsDebit ? $amount : 0.00, $contraRoleIsDebit ? 0.00 : $amount,
+                            $contraBalanceAfter,
+                            "Transfer via Voucher {$voucher['voucher_number']} — {$voucher['narration']}",
+                            $voucher['voucher_date'], date('Y', strtotime($voucher['voucher_date'])), $voucher['narration'], $userId,
+                        ]);
+                        $contraSavingsId = (int)$this->db->lastInsertId();
+                    }
+
+                } else {
+                    // SINGLE SUBLEDGER
+                    $subledgerRoleIsDebit = $subledger['role'] === 'debit';
+                    
+                    if ($primarySubledgerType === 'shares') {
+                        // SINGLE: Shares transaction
+                        $shareValue = $this->getShareValue();
+                        $quantity = $amount / $shareValue;
+                        $shareModel = new ShareModel();
+                        $shareQuantityBefore = $shareModel->memberQuantity((int)$voucher['share_member_id'], $shareValue);
+                        $shareQuantityAfter = $subledgerRoleIsDebit ? $shareQuantityBefore - $quantity : $shareQuantityBefore + $quantity;
+                        
+                        $transactionType = $subledgerRoleIsDebit ? 'redemption' : 'direct_purchase';
+                        
+                        $shareStmt = $this->db->prepare("
+                            INSERT INTO `share_transactions`
+                                (member_id, transaction_type, transaction_date, quantity, share_value, amount,
+                                 reference_number, source_reference_type, source_reference_id, journal_entry_id, processed_by)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'internal_voucher', ?, NULL, ?)
+                        ");
+                        $shareStmt->execute([
+                            $voucher['share_member_id'], $transactionType, $voucher['voucher_date'],
+                            $quantity, $shareValue, $amount, $voucher['voucher_number'], $voucherId, $userId
+                        ]);
+                        $shareTransactionId = (int)$this->db->lastInsertId();
+                        
+                    } else {
+                        // SINGLE: Savings transaction
+                        $savingsStmt = $this->db->prepare("
+                            INSERT INTO `savings`
+                                (member_id, savings_account_id, receipt_number, transaction_type, debit, credit,
+                                 running_balance, description, payment_method, transaction_date, financial_year, notes, recorded_by)
+                            VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, 'Other', ?, ?, ?, ?)
+                        ");
+                        $savingsStmt->execute([
+                            $voucher['member_id'], $voucher['savings_account_id'], $voucher['voucher_number'],
+                            $subledgerRoleIsDebit ? $amount : 0.00, $subledgerRoleIsDebit ? 0.00 : $amount,
+                            $balanceAfter,
+                            "Internal Voucher {$voucher['voucher_number']} — {$voucher['narration']}",
+                            $voucher['voucher_date'], date('Y', strtotime($voucher['voucher_date'])), $voucher['narration'], $userId,
+                        ]);
+                        $savingsId = (int)$this->db->lastInsertId();
+                    }
+                }
             }
 
             $service = new JournalService();
@@ -546,15 +935,32 @@ class InternalVoucherModel extends Model
 
             $this->db->prepare(
                 "UPDATE `internal_vouchers` SET status = 'posted', posted_at = NOW(), journal_entry_id = ?,
-                 savings_id = ?, balance_before = ?, balance_after = ? WHERE id = ?"
-            )->execute([$result['id'], $savingsId, $balanceBefore, $balanceAfter, $voucherId]);
+                 savings_id = ?, balance_before = ?, balance_after = ?,
+                 contra_savings_id = ?, contra_balance_before = ?, contra_balance_after = ?,
+                 share_transaction_id = ?, share_quantity_before = ?, share_quantity_after = ?,
+                 contra_share_transaction_id = ?, contra_share_quantity_before = ?, contra_share_quantity_after = ?
+                 WHERE id = ?"
+            )->execute([$result['id'], $savingsId, $balanceBefore, $balanceAfter, 
+                        $contraSavingsId, $contraBalanceBefore, $contraBalanceAfter,
+                        $shareTransactionId, $shareQuantityBefore, $shareQuantityAfter,
+                        $contraShareTransactionId, $contraShareQuantityBefore, $contraShareQuantityAfter,
+                        $voucherId]);
 
             $this->writeAudit($userId, 'posted', $voucherId, [
-                'journal_entry_id' => $result['id'],
-                'entry_number'     => $result['entry_number'],
-                'savings_id'       => $savingsId,
-                'balance_before'   => $balanceBefore,
-                'balance_after'    => $balanceAfter,
+                'journal_entry_id'       => $result['id'],
+                'entry_number'           => $result['entry_number'],
+                'savings_id'             => $savingsId,
+                'balance_before'         => $balanceBefore,
+                'balance_after'          => $balanceAfter,
+                'contra_savings_id'      => $contraSavingsId,
+                'contra_balance_before'  => $contraBalanceBefore,
+                'contra_balance_after'   => $contraBalanceAfter,
+                'share_transaction_id'       => $shareTransactionId,
+                'share_quantity_before'      => $shareQuantityBefore,
+                'share_quantity_after'       => $shareQuantityAfter,
+                'contra_share_transaction_id'     => $contraShareTransactionId,
+                'contra_share_quantity_before'    => $contraShareQuantityBefore,
+                'contra_share_quantity_after'     => $contraShareQuantityAfter,
             ]);
 
             if ($ownTransaction) {
@@ -568,8 +974,21 @@ class InternalVoucherModel extends Model
         }
 
         return [
-            'journal_entry_id' => $result['id'], 'entry_number' => $result['entry_number'], 'created' => $result['created'],
-            'savings_id' => $savingsId, 'balance_before' => $balanceBefore, 'balance_after' => $balanceAfter,
+            'journal_entry_id'       => $result['id'],
+            'entry_number'           => $result['entry_number'],
+            'created'                => $result['created'],
+            'savings_id'             => $savingsId,
+            'balance_before'         => $balanceBefore,
+            'balance_after'          => $balanceAfter,
+            'contra_savings_id'      => $contraSavingsId,
+            'contra_balance_before'  => $contraBalanceBefore,
+            'contra_balance_after'   => $contraBalanceAfter,
+            'share_transaction_id'       => $shareTransactionId,
+            'share_quantity_before'      => $shareQuantityBefore,
+            'share_quantity_after'       => $shareQuantityAfter,
+            'contra_share_transaction_id'     => $contraShareTransactionId,
+            'contra_share_quantity_before'    => $contraShareQuantityBefore,
+            'contra_share_quantity_after'     => $contraShareQuantityAfter,
         ];
     }
 

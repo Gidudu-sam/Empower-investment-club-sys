@@ -596,6 +596,112 @@ try {
     </div>
 </div>
 
+<!-- ── SHARES SECTION ─────────────────────────────────── -->
+<?php
+$shareQuantity = 0;
+$shareCapital  = 0;
+$shareValue    = 1000.00; // Default share value, could be from settings
+$shareAccount  = null;
+$shareTransactions = [];
+try {
+    require_once APP_PATH . '/models/ShareModel.php';
+    $shareModel = new ShareModel();
+    $shareQuantity = $shareModel->memberQuantity((int)$member['id'], $shareValue);
+    $shareCapital  = $shareModel->memberCapital((int)$member['id']);
+    $shareTransactions = $shareModel->ledgerForMember((int)$member['id'], $shareValue);
+    
+    // Get member share account if exists
+    $db = Database::getInstance()->getConnection();
+    $stmt = $db->prepare('SELECT * FROM member_share_accounts WHERE member_id = ?');
+    $stmt->execute([(int)$member['id']]);
+    $shareAccount = $stmt->fetch();
+} catch (Exception $e) {
+    // Table might not exist yet, silently handle
+}
+?>
+
+<?php if ($shareQuantity > 0 || $shareAccount): ?>
+<div class="row g-4 mt-1">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="bi bi-shield-fill-check me-2 text-success"></i>Share Capital
+                </h6>
+                <?php if ($shareAccount): ?>
+                <span class="badge bg-success-subtle text-success">
+                    <?= htmlspecialchars($shareAccount['account_number']) ?>
+                </span>
+                <?php endif; ?>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-success bg-opacity-10 rounded-3">
+                            <div class="fw-bold text-success fs-5"><?= number_format($shareQuantity, 4) ?></div>
+                            <div class="text-muted small mt-1">Total Shares Owned</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-primary bg-opacity-10 rounded-3">
+                            <div class="fw-bold text-primary fs-5">Shs <?= number_format($shareCapital, 2) ?></div>
+                            <div class="text-muted small mt-1">Share Capital Value</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3 bg-info bg-opacity-10 rounded-3">
+                            <div class="fw-bold text-info fs-5"><?= count($shareTransactions) ?></div>
+                            <div class="text-muted small mt-1">Total Transactions</div>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if (!empty($shareTransactions)): ?>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-2">Date</th>
+                                <th>Transaction Type</th>
+                                <th class="text-end">Quantity</th>
+                                <th class="text-end">Share Value</th>
+                                <th class="text-end">Amount</th>
+                                <th class="pe-2">Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($shareTransactions as $st): ?>
+                            <tr>
+                                <td class="ps-2 text-muted small"><?= isset($st['date']) ? date('d M Y', strtotime($st['date'])) : 'N/A' ?></td>
+                                <td>
+                                    <span class="badge bg-<?= 
+                                        in_array($st['transaction_type'] ?? '', ['transfer_out', 'redemption']) ? 'danger' : 'success' 
+                                    ?>-subtle text-<?= 
+                                        in_array($st['transaction_type'] ?? '', ['transfer_out', 'redemption']) ? 'danger' : 'success' 
+                                    ?> small">
+                                        <?= htmlspecialchars(str_replace('_', ' ', ucwords($st['transaction_type'] ?? 'Unknown', '_'))) ?>
+                                    </span>
+                                </td>
+                                <td class="text-end fw-semibold small"><?= number_format($st['quantity'] ?? 0, 4) ?></td>
+                                <td class="text-end text-muted small">Shs <?= number_format($st['share_value'] ?? 0, 2) ?></td>
+                                <td class="text-end fw-bold small">Shs <?= number_format($st['amount'] ?? 0, 2) ?></td>
+                                <td class="pe-2 small text-muted"><?= htmlspecialchars($st['reference_number'] ?? 'N/A') ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php else: ?>
+                <p class="text-muted text-center py-3 mb-0 small">
+                    <i class="bi bi-info-circle me-1"></i>No share transactions recorded yet.
+                </p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- ── WITHDRAWALS SECTION ─────────────────────────────────── -->
 <?php
 $wdlHistory       = [];
